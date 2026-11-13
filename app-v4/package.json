@@ -7,7 +7,10 @@
     "build": "next build --turbopack",
     "start": "next start -p 43123",
     "lint": "eslint",
-    "test:logic": "tsx scripts/logic.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:logic": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
@@ -22,15 +25,19 @@
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
-    "jsqr": "^1.4.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.32",
+    "zod": "4.6.7"
   }
 }

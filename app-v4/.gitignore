@@ -44,13 +44,18 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Android / signing (never commit the keystore)
-/android
+# Android / signing (never commit the keystore or build outputs)
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/captures/
 /cap-www
-capacitor.config.ts
-capacitor.config.json
 *.jks
 *.keystore
 *.apk
 # APK is copied into public/download just before deploy
 !/public/download/.gitkeep
+
+playwright-report/
+test-results/

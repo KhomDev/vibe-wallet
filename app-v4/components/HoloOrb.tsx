@@ -147,11 +147,14 @@ export function HoloOrb({
     return () => cancelAnimationFrame(frame);
   }, [levelRef]);
 
+  const recording = state === "listening";
   return (
     <button
-      className="orb-hit"
+      className={`orb-hit${recording ? " is-recording" : ""}`}
       type="button"
-      aria-label={state === "listening" ? "Stop listening" : "Start listening"}
+      data-testid="holo-orb"
+      data-state={state}
+      aria-label={recording ? "Stop recording" : state === "thinking" ? "Working" : "Start recording"}
       onPointerDown={() => {
         squash.current.value = 0.82;
         squash.current.velocity = 0.04;
@@ -159,6 +162,12 @@ export function HoloOrb({
       onClick={onPress}
     >
       <canvas ref={canvasRef} />
+      {recording ? (
+        <span className="orb-rec" aria-hidden="true">
+          <i />
+          Recording
+        </span>
+      ) : null}
     </button>
   );
 }

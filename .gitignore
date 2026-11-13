@@ -9,7 +9,11 @@
 *.keystore
 *.apk
 *.tar.gz
-android/
+# Android build outputs only; source under app-v4/android is tracked
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/local.properties
 cap-www/
 app-glass/
 progress/
@@ -27,3 +31,5 @@ secrets/
 **/keystore.pass
 **/key.pass
 app-v4/.env.local
+
+vibe-wallet.bundle

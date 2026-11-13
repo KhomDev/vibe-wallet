@@ -16,6 +16,8 @@ export const NEAR_AI_BASE_URL =
 // reasoning_content so content is not dropped when the model thinks first.
 export const NEAR_AI_MODEL = process.env.NEAR_AI_MODEL || "z-ai/glm-5.3-flash";
 
+export const NEAR_AI_STT_MODEL = process.env.NEAR_AI_STT_MODEL || "openai/whisper-large-v3";
+
 export const SCOPED_CONTRACT_ID = "wrap.testnet";
 
 export const SCOPED_METHODS = ["ft_balance_of", "storage_balance_of"] as const;

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Vibe Wallet</string>
+    <string name="title_activity_main">Vibe Wallet</string>
+    <string name="package_name">app.vibe.wallet</string>
+    <string name="custom_url_scheme">app.vibe.wallet</string>
+</resources>

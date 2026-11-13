@@ -16,7 +16,7 @@ import { addSpend, clearVault, loadActivity, loadPolicy, loadSpend, rememberActi
 import { formatNear, parseNear } from "@/lib/units";
 import { encryptSecret } from "@/lib/vault";
 import { chime, haptic, pop, setSoundMuted, soundMuted } from "@/lib/sounds";
-import { speak, startLevelMeter, startListening, stopSpeaking } from "@/lib/voice";
+import { speak, startVoiceInput, stopSpeaking, voiceInputSupported } from "@/lib/voice";
 import { ActionCards, type Pending, type ReceiptView } from "./ActionCards";
 import { BubbleBurst } from "./BubbleBurst";
 import { Brand, Stage, TabBar } from "./Chrome";
@@ -52,6 +52,7 @@ export function WalletApp() {
   const [draft, setDraft] = useState("");
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [phrase, setPhrase] = useState("");
@@ -588,21 +589,29 @@ export function WalletApp() {
   }
 
   function startMic() {
-    if (recRef.current) return;
+    if (recRef.current || transcribing) return;
+    if (!voiceInputSupported()) {
+      const message = "This browser can't use the microphone. Type a command below, or tap a suggestion.";
+      setVoiceHint(message);
+      setError(null);
+      focusComposer();
+      return;
+    }
     handsFreeRef.current = true;
     setVoiceHint(null);
     setError(null);
-    if (!levelStopRef.current) {
-      void startLevelMeter((level) => { levelRef.current = level; }).then((stop) => {
-        if (!handsFreeRef.current) stop();
-        else levelStopRef.current = stop;
-      }).catch(() => undefined);
-    }
-    const recognition = startListening({
-      continuous: true,
-      onInterim: setInterim,
+    setInterim("");
+    setListening(true);
+    void startVoiceInput({
+      onLevel: (level) => { levelRef.current = level; },
+      onTranscribing: () => {
+        setListening(false);
+        setTranscribing(true);
+        setInterim("");
+      },
       onFinal: (text) => {
         setInterim("");
+        setTranscribing(false);
         const card = pendingRef.current;
         const spoken = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
         const expected = policyRef.current.confirmPhrase.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -623,40 +632,41 @@ export function WalletApp() {
         void handleRef.current(text);
       },
       onError: (message) => {
-        if (message.includes("denied") || message.includes("could not start") || message.includes("still type") || message.includes("Type a command")) {
-          stopMic();
-          setVoiceHint(message);
-          setError(null);
-          focusComposer();
-          return;
-        }
-        setError(message);
+        handsFreeRef.current = false;
+        recRef.current = null;
+        levelRef.current = 0;
+        setListening(false);
+        setTranscribing(false);
+        setInterim("");
+        setVoiceHint(message);
+        setError(null);
+        focusComposer();
       },
       onEnd: () => {
         recRef.current = null;
-        if (handsFreeRef.current) {
-          window.setTimeout(() => startMicRef.current(), 280);
-          return;
-        }
+        handsFreeRef.current = false;
+        levelRef.current = 0;
         setListening(false);
+        setTranscribing(false);
       },
+    }).then((session) => {
+      if (!handsFreeRef.current) {
+        session?.stop();
+        return;
+      }
+      if (!session) {
+        handsFreeRef.current = false;
+        setListening(false);
+        return;
+      }
+      recRef.current = session;
     });
-    if (!recognition) {
-      handsFreeRef.current = false;
-      setListening(false);
-      const message = "This browser can't use the microphone. Type a command below, or tap a suggestion.";
-      setVoiceHint(message);
-      setError(null);
-      focusComposer();
-      return;
-    }
-    recRef.current = recognition;
-    setListening(true);
   }
   startMicRef.current = startMic;
 
   function toggleMic() {
-    if (handsFreeRef.current) stopMic();
+    if (transcribing) return;
+    if (handsFreeRef.current || recRef.current) stopMic();
     else startMic();
   }
 
@@ -799,7 +809,7 @@ export function WalletApp() {
 
   const demo = isDemoSession(session);
   const orb: OrbState = listening ? "listening"
-    : busy ? "thinking"
+    : transcribing || busy ? "thinking"
     : pending?.kind === "send" && pending.check.blockReason ? "blocked"
     : pending?.kind === "send" || pending?.kind === "schedule" || pending?.kind === "price" ? "confirming"
     : policy.killed ? "blocked"
@@ -840,7 +850,7 @@ export function WalletApp() {
           >
             {muted ? "×" : "♪"}
           </button>
-          <button className="icon-btn" type="button" aria-pressed={listening} aria-label={listening ? "Stop listening" : "Start listening"} onClick={toggleMic}>
+          <button className="icon-btn" type="button" aria-pressed={listening || transcribing} aria-label={listening ? "Stop recording" : transcribing ? "Transcribing" : "Start recording"} onClick={toggleMic}>
             <MicIcon />
           </button>
         </div>
@@ -872,7 +882,7 @@ export function WalletApp() {
                   Done
                   <a className="fee link underline" href={explorerTxUrl(receipt.hash)} target="_blank" rel="noreferrer">View transaction</a>
                 </>
-              ) : interim ? interim : listening ? "Listening…" : lastReply ? lastReply.text : "Just talk to me. Type a command or tap a suggestion."}
+              ) : transcribing ? "Transcribing…" : interim ? interim : listening ? "Recording… tap the orb to stop" : lastReply ? lastReply.text : "Just talk to me. Type a command or tap a suggestion."}
             </div>
             {voiceHint ? <p className="banner banner-warn mt-2" role="status">{voiceHint}</p> : null}
             {sendPending?.check.warnings.map((warning) => <p key={warning} className="banner banner-warn mt-2">{warning}</p>)}
@@ -880,7 +890,7 @@ export function WalletApp() {
             {sendPending?.check.needsPhrase ? (
               <label className="mt-3 grid gap-1 text-sm">
                 Type {policy.confirmPhrase}
-                <input className="field" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
+                <input className="field" data-testid="confirm-phrase" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
               </label>
             ) : null}
             {policy.killed ? <p className="banner banner-danger mt-2">Sending is stopped. Balance, history, and quotes still work.</p> : null}

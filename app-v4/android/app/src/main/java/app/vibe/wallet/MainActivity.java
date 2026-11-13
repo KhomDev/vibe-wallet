@@ -33,6 +33,8 @@ public class MainActivity extends BridgeActivity {
         }
         if (getBridge() == null || getBridge().getWebView() == null) return;
         WebView webView = getBridge().getWebView();
+        // Hands-free mode speaks replies without a fresh tap each time.
+        webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         if (Build.VERSION.SDK_INT >= 26) {
             WebChromeClient current = webView.getWebChromeClient();
             webView.setWebChromeClient(new MicGrantChromeClient(current));

@@ -100,7 +100,7 @@ Playwright (`e2e/mobile.spec.ts`), with projects `iphone` (iPhone 13 device prof
 | 2 | 37/37 | 10/10 |
 | 3 | 37/37 | 10/10 |
 
-An earlier set of runs stopped at the demo's own guard ("at most 8 sends per hour from this network"). The local test server now raises that with `DEMO_SENDS_PER_HOUR`/`DEMO_SENDS_PER_DAY`. Production keeps 8 per hour and 20 per day.
+An earlier set of runs stopped at the demo's own guard ("at most 8 sends per hour from this network"). The local test server now raises that with `DEMO_SENDS_PER_HOUR`/`DEMO_SENDS_PER_DAY`. Production keeps 8 per hour and 20 per day, now counted per visitor (see below).
 
 WebKit: Playwright's WebKit build needs system libraries that this machine could not install (the Debian mirror returned errors), so the `iphone` project ran with the iPhone 13 profile (viewport, touch, user agent) on Chromium. Run with `E2E_WEBKIT=1` where WebKit is installed to use the real engine.
 
@@ -109,3 +109,15 @@ WebKit: Playwright's WebKit build needs system libraries that this machine could
 - The first run failed every mobile test at `openDemo`. The demo button is server-rendered, and a click before hydration did nothing. `openDemo` now retries the click until the app opens.
 - Rerun: 7 of 8 passed. Android Pixel 7 passed 5 of 5, and iPhone 13 passed 2 of 3. The failure was correct: that day's test sends had used up the demo's 2 NEAR daily cap, so the policy blocked the send ("This would pass your daily limit of 2 NEAR"). The cap resets at 00:00 UTC.
 - The desktop production spec passed 2 of 2.
+
+### Per-visitor demo limits (13 Nov 2026)
+
+The shared demo used to count its 2 NEAR daily limit and its send rate for everyone at once, so a single visitor could block the rest. It now counts per visitor:
+
+- **Who is a visitor:** opening the demo sets `vw_vid`, an HMAC-signed, httpOnly, Secure, SameSite=Lax cookie. Sends count against that id. With no cookie, or a forged one, they count against a hash of the IP.
+- **Per visitor:** 2 NEAR per UTC day (the wallet policy), 8 sends per hour, and 20 per day.
+- **Per network:** 30 sends per hour and 100 per day, to slow down cookie rotation.
+- **Global:** at most 20 NEAR per UTC day across the whole demo account (`DEMO_GLOBAL_DAILY_NEAR`). The scheduled agent has its own budget, which also counts toward the global total.
+- **One-time reset:** `COUNTER_RESET` in `lib/server/state.ts` cleared the counter that test runs had filled on 13 Nov.
+
+`tests/demo-limits.test.ts` covers cookie signing and forgery, the IP fallback, two visitors on one IP, one visitor's limit not blocking another, the global cap, per-visitor and per-network rates, day rollover, the agent budget, and the reset.

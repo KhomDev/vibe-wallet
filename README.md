@@ -149,7 +149,7 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **The AI never holds a key.** Models return a typed intent only. Recipients that do not appear in the user's own words are rejected.
 - **Every send passes the policy** (kill switch, per-tx cap, daily cap, allowlist, account existence, confirm phrase above a threshold) and then requires an explicit slide.
 - **Personal wallets:** the full-access key is encrypted in the browser and never sent to a server.
-- **Shared demo account:** the key lives only in server environment variables. Server-side caps: 0.3 NEAR per transaction, 2 NEAR per UTC day, allowlist-only, confirm phrase, and rate limits of 8 sends per hour and 20 per day.
+- **Shared demo account:** the key lives only in server environment variables. Server-side caps: 0.3 NEAR per transaction, allowlist-only, and a confirm phrase. Each visitor gets 2 NEAR per UTC day plus 8 sends per hour and 20 per day. A visitor is identified by a signed, httpOnly cookie, or by IP when there is no cookie, so one visitor can't block anyone else. A looser per-network ceiling and a global cap of 20 NEAR per day on the demo account stop it from being drained.
 - **Agent:** runs inside the same limits and stops when the kill switch is on.
 - **Mainnet is opt-in.** Intents execution refuses to run unless the network is explicitly `mainnet`, and the proof script enforces an allowlist-only policy with a 0.05 NEAR cap.
 - **Repository hygiene:** no secrets in git (`gitleaks` clean), GitHub secret scanning enabled, `.env.example` lists names only.

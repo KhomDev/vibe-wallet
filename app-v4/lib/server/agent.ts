@@ -1,3 +1,4 @@
+import { AGENT_SPEND_KEY, addKeyedSpend, visitorSpentToday } from "./demo-limits";
 import { explorerTxUrl } from "../config";
 import { toPolicy } from "../policy";
 import { parseNear } from "../units";
@@ -5,12 +6,10 @@ import { getDemoSecrets } from "./env";
 import { demoStoredPolicy } from "./policy";
 import { dryIntentsQuote, nearUsdPrice } from "./quote";
 import {
-  addSpent,
   isFridayUtc,
   loadState,
   pushLog,
   saveState,
-  spentToday,
   utcDay,
   type AgentRule,
   type AgentState,
@@ -92,12 +91,12 @@ export async function runAgentTick(reason: string): Promise<TickResult> {
           recipient,
           amountNear: rule.amountNear,
           policy,
-          spentTodayYocto: spentToday(state),
+          spentTodayYocto: visitorSpentToday(state, AGENT_SPEND_KEY),
           userConfirmed: true,
           confirmationPhrase: policy.confirmPhrase,
           skipPhrase: true,
         });
-        state = addSpent(state, parseNear(rule.amountNear));
+        state = addKeyedSpend(state, AGENT_SPEND_KEY, parseNear(rule.amountNear));
         state = pushLog(state, {
           action: "transfer",
           ruleId: rule.id,

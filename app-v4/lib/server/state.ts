@@ -19,8 +19,16 @@ export type AgentState = {
   rules: AgentRule[];
   logs: AgentLog[];
   rates: Record<string, RateBucket>;
+  /** Per-visitor demo spend for today, keyed like the rate buckets. */
+  visitorSpend: Record<string, { day: string; yocto: string }>;
+  /** Marker for one-time counter resets; see COUNTER_RESET. */
+  counterReset?: string;
   updatedAt: string;
 };
+
+// Bumping this value clears today's demo counters once, the next time state is loaded.
+// 2026-11-13: limits moved to per-visitor, and the counter that test runs had filled was reset.
+export const COUNTER_RESET = "2026-11-13-per-visitor";
 
 const EMPTY: AgentState = {
   killed: false,
@@ -30,6 +38,8 @@ const EMPTY: AgentState = {
   rules: [],
   logs: [],
   rates: {},
+  visitorSpend: {},
+  counterReset: COUNTER_RESET,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -162,7 +172,7 @@ function writeFile(path: string, state: AgentState): void {
 
 function normalize(raw: unknown): AgentState {
   const value = raw && typeof raw === "object" ? raw as Partial<AgentState> : {};
-  return {
+  const state: AgentState = {
     killed: Boolean(value.killed),
     spentDay: typeof value.spentDay === "string" ? value.spentDay : "",
     spentYocto: typeof value.spentYocto === "string" ? value.spentYocto : "0",
@@ -170,8 +180,16 @@ function normalize(raw: unknown): AgentState {
     rules: Array.isArray(value.rules) ? value.rules as AgentRule[] : [],
     logs: Array.isArray(value.logs) ? value.logs as AgentLog[] : [],
     rates: value.rates && typeof value.rates === "object" ? value.rates as Record<string, RateBucket> : {},
+    visitorSpend: value.visitorSpend && typeof value.visitorSpend === "object" ? value.visitorSpend as AgentState["visitorSpend"] : {},
+    counterReset: typeof value.counterReset === "string" ? value.counterReset : undefined,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
   };
+  return applyCounterReset(state);
+}
+
+export function applyCounterReset(state: AgentState): AgentState {
+  if (state.counterReset === COUNTER_RESET) return state;
+  return { ...state, spentYocto: "0", rates: {}, visitorSpend: {}, counterReset: COUNTER_RESET };
 }
 
 function newer(left: AgentState | null, right: AgentState | null): AgentState {
@@ -266,8 +284,8 @@ export function isFridayUtc(date = new Date()): boolean {
   return date.getUTCDay() === 5;
 }
 
-export function spentToday(state: AgentState): bigint {
-  return state.spentDay === utcDay() ? BigInt(state.spentYocto || "0") : 0n;
+export function spentToday(state: AgentState, now = new Date()): bigint {
+  return state.spentDay === utcDay(now) ? BigInt(state.spentYocto || "0") : 0n;
 }
 
 export function addSpent(state: AgentState, amount: bigint): AgentState {

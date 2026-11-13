@@ -2,9 +2,11 @@ import { isValidAccountId, normalizeAccountId, resolveAccountInput } from "@/lib
 import { NETWORK_ID } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { formatNear } from "@/lib/units";
-import { getDemoSecrets } from "@/lib/server/env";
+import { clientIp, getDemoSecrets } from "@/lib/server/env";
 import { demoStoredPolicy } from "@/lib/server/policy";
-import { pushLog, spentToday, updateState } from "@/lib/server/state";
+import { pushLog, updateState } from "@/lib/server/state";
+import { visitorSpentToday } from "@/lib/server/demo-limits";
+import { resolveVisitor, visitorSecret, withVisitorCookie } from "@/lib/server/visitor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,11 +47,12 @@ export async function POST(request: Request): Promise<Response> {
       return state;
     });
     const policy = demoStoredPolicy(secrets.recipientId, state.killed, state.allowlist.length ? state.allowlist : [secrets.recipientId]);
-    return Response.json({
+    const visitor = resolveVisitor(request, clientIp(request), visitorSecret(secrets.cronSecret || secrets.secretKey));
+    return withVisitorCookie(Response.json({
       policy,
       killed: state.killed,
-      spentTodayNear: formatNear(spentToday(state)),
-    });
+      spentTodayNear: formatNear(visitorSpentToday(state, visitor.key)),
+    }), visitor);
   } catch (err) {
     return Response.json({ error: publicError(err) }, { status: 400 });
   }

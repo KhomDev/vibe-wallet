@@ -6,8 +6,9 @@ import { toPolicy } from "@/lib/policy";
 import { formatNear, parseNear } from "@/lib/units";
 import { clientIp, getDemoSecrets } from "@/lib/server/env";
 import { demoStoredPolicy } from "@/lib/server/policy";
-import { bumpRate, checkRate } from "@/lib/server/rate-limit";
-import { addSpent, loadState, pushLog, spentToday, updateState } from "@/lib/server/state";
+import { checkDemoGate, recordDemoSend, visitorSpentToday } from "@/lib/server/demo-limits";
+import { loadState, pushLog, updateState } from "@/lib/server/state";
+import { resolveVisitor, visitorSecret, withVisitorCookie } from "@/lib/server/visitor";
 import { executeDemoTransfer, previewSend } from "@/lib/server/transfer";
 
 export const runtime = "nodejs";
@@ -20,12 +21,18 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "Send a JSON body." }, { status: 400 });
   }
+  let visitor: ReturnType<typeof resolveVisitor> | null = null;
+  const reply = (data: unknown, init?: ResponseInit) => {
+    const response = Response.json(data, init);
+    return visitor ? withVisitorCookie(response, visitor) : response;
+  };
   try {
     const secrets = getDemoSecrets();
+    visitor = resolveVisitor(request, clientIp(request), visitorSecret(secrets.cronSecret || secrets.secretKey));
     const recipient = typeof body.recipient === "string" ? resolveAccountInput(body.recipient, NETWORK_ID) : "";
     const amountNear = typeof body.amountNear === "string" ? body.amountNear.trim() : "";
     const phrase = typeof body.phrase === "string" ? body.phrase : "";
-    if (!isValidAccountId(recipient)) return Response.json({ error: "That recipient is not a valid NEAR account id." }, { status: 400 });
+    if (!isValidAccountId(recipient)) return reply({ error: "That recipient is not a valid NEAR account id." }, { status: 400 });
     parseNear(amountNear);
 
     const state = await loadState();
@@ -35,28 +42,29 @@ export async function POST(request: Request): Promise<Response> {
       recipient,
       amountNear,
       policy,
-      spentTodayYocto: spentToday(state),
+      // The 2 NEAR daily limit in the policy applies per visitor.
+      spentTodayYocto: visitorSpentToday(state, visitor.key),
     });
+    const gate = checkDemoGate(state, visitor.key, visitor.ipKey, preview.amountYocto);
 
     if (body.preview === true) {
-      return Response.json({
+      const check = !gate.ok && !preview.check.blockReason ? { ...preview.check, blockReason: gate.reason } : preview.check;
+      return reply({
         preview: true,
         recipient,
         amountNear,
         feeNear: formatNear(preview.feeYocto, 8),
         balanceAfterNear: formatNear(preview.after),
-        check: preview.check,
+        check,
         availableNear: preview.balance.availableNear,
         confirmPhrase: policy.confirmPhrase,
       });
     }
 
     if (preview.check.blockReason) {
-      return Response.json({ error: preview.check.blockReason, check: preview.check, blocked: true }, { status: 403 });
+      return reply({ error: preview.check.blockReason, check: preview.check, blocked: true }, { status: 403 });
     }
-
-    const rate = checkRate(state, clientIp(request), secrets.cronSecret || secrets.accountId);
-    if (!rate.ok) return Response.json({ error: rate.reason, blocked: true }, { status: 429 });
+    if (!gate.ok) return reply({ error: gate.reason, blocked: true }, { status: gate.status });
 
     const result = await executeDemoTransfer({
       accountId: secrets.accountId,
@@ -65,12 +73,12 @@ export async function POST(request: Request): Promise<Response> {
       recipient,
       amountNear,
       policy,
-      spentTodayYocto: spentToday(state),
+      spentTodayYocto: visitorSpentToday(state, visitor.key),
       userConfirmed: true,
       confirmationPhrase: phrase,
     });
     await updateState((current) => {
-      const next = bumpRate(addSpent(current, preview.amountYocto), rate.key);
+      const next = recordDemoSend(current, visitor!.key, visitor!.ipKey, preview.amountYocto);
       return pushLog(next, {
         action: "transfer",
         reason: `Demo send of ${amountNear} NEAR to ${recipient}, confirmed in the app.`,
@@ -80,7 +88,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     const { readBalance } = await import("@/lib/near/read");
     const balance = await readBalance(secrets.accountId);
-    return Response.json({
+    return reply({
       hash: result.hash,
       feeNear: formatNear(result.feeYocto, 8),
       explorerUrl: explorerTxUrl(result.hash),
@@ -89,6 +97,6 @@ export async function POST(request: Request): Promise<Response> {
       availableNear: balance?.availableNear ?? null,
     });
   } catch (err) {
-    return Response.json({ error: publicError(err) }, { status: 400 });
+    return reply({ error: publicError(err) }, { status: 400 });
   }
 }

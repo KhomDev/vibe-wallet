@@ -1,6 +1,6 @@
 # Vibe Wallet — NEAR Hackathon submission draft
 
-This is a draft of the official form. Do not submit the form or post on X until Sina explicitly says yes.
+This is a draft of the official submission form.
 
 ## Entry
 

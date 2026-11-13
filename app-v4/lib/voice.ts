@@ -1,18 +1,113 @@
+import { Capacitor } from "@capacitor/core";
+
 export function speechOutputSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
+const PREFERRED_VOICES = [
+  /samantha \(enhanced\)|samantha \(premium\)/i,
+  /\b(ava|zoe|evan|nathan|noelle|allison|tom) \((enhanced|premium)\)/i,
+  /(enhanced|premium|neural|natural)/i,
+  /google us english/i,
+  /microsoft (aria|jenny|guy|ava|andrew|emma|brian) online/i,
+  /^samantha$/i,
+  /google uk english (female|male)/i,
+];
+
+let chosenVoice: SpeechSynthesisVoice | null | undefined;
+
+/** Picks the most natural English voice the device offers. */
+export function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const english = voices.filter((voice) => /^en[-_]/i.test(voice.lang));
+  for (const pattern of PREFERRED_VOICES) {
+    const match = english.find((voice) => pattern.test(voice.name)) ?? english.find((voice) => pattern.test(voice.voiceURI));
+    if (match) return match;
+  }
+  return english.find((voice) => /en[-_]us/i.test(voice.lang)) ?? english[0] ?? null;
+}
+
+function voice(): SpeechSynthesisVoice | null {
+  if (!speechOutputSupported()) return null;
+  if (chosenVoice) return chosenVoice;
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length) chosenVoice = pickVoice(voices);
+  return chosenVoice ?? null;
+}
+
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  window.speechSynthesis.addEventListener?.("voiceschanged", () => {
+    chosenVoice = pickVoice(window.speechSynthesis.getVoices());
+  });
+}
+
+export function voiceName(): string {
+  if (typeof window !== "undefined" && Capacitor.isNativePlatform()) return "Android native TTS";
+  return voice()?.name ?? "default";
+}
+
+/** In the Android APK, use the phone's native neural TTS (the WebView has no reliable speechSynthesis). */
+async function nativeSpeak(text: string): Promise<boolean> {
+  try {
+    if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("TextToSpeech")) return false;
+    const { TextToSpeech } = await import("@capacitor-community/text-to-speech");
+    await TextToSpeech.speak({ text, lang: "en-US", rate: 1.05, pitch: 0.92, volume: 1, category: "playback" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function stopNativeSpeech(): void {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
+  void import("@capacitor-community/text-to-speech").then(({ TextToSpeech }) => TextToSpeech.stop()).catch(() => undefined);
+}
+
+/** Speaks and resolves when done (or after a timeout, since iOS sometimes drops onend). */
+export async function speakAsync(text: string): Promise<void> {
+  if (!text.trim()) return;
+  if (await nativeSpeak(text)) return;
+  return browserSpeak(text);
+}
+
+function browserSpeak(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!speechOutputSupported() || !text.trim()) return resolve();
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const picked = voice();
+    if (picked) utterance.voice = picked;
+    utterance.lang = picked?.lang ?? "en-US";
+    utterance.rate = 1.05;
+    utterance.pitch = 0.92;
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(done, 1500 + text.length * 90);
+    utterance.onend = done;
+    utterance.onerror = done;
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
 export function speak(text: string): void {
+  void speakAsync(text);
+}
+
+/** iOS only lets speech start from a tap; call this inside the tap handler. */
+export function unlockSpeech(): void {
   if (!speechOutputSupported()) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1;
-  utterance.lang = "en-US";
+  const utterance = new SpeechSynthesisUtterance(" ");
+  utterance.volume = 0;
   window.speechSynthesis.speak(utterance);
 }
 
 export function stopSpeaking(): void {
   if (speechOutputSupported()) window.speechSynthesis.cancel();
+  stopNativeSpeech();
 }
 
 export type VoiceSession = {

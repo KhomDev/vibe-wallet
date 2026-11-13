@@ -3,7 +3,7 @@ import { publicError } from "@/lib/errors";
 import { formatNear } from "@/lib/units";
 import { getDemoSecrets } from "@/lib/server/env";
 import { demoStoredPolicy } from "@/lib/server/policy";
-import { loadState, pushLog, saveState, spentToday } from "@/lib/server/state";
+import { pushLog, spentToday, updateState } from "@/lib/server/state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,29 +17,32 @@ export async function POST(request: Request): Promise<Response> {
   }
   try {
     const secrets = getDemoSecrets();
-    let state = await loadState();
-    if (typeof body.killed === "boolean") {
-      state = { ...state, killed: body.killed };
-      state = pushLog(state, {
-        action: "info",
-        reason: body.killed
-          ? "Kill switch turned on. Demo sends and the agent are stopped."
-          : "Kill switch turned off. Demo sends and the agent may run again.",
-      });
+    if (typeof body.allow === "string" && !isValidAccountId(normalizeAccountId(body.allow))) {
+      return Response.json({ error: "That allowlist entry is not a valid NEAR account id." }, { status: 400 });
     }
-    const allowlist = state.allowlist.length ? [...state.allowlist] : [secrets.recipientId];
-    if (typeof body.allow === "string") {
-      const id = normalizeAccountId(body.allow);
-      if (!isValidAccountId(id)) return Response.json({ error: "That allowlist entry is not a valid NEAR account id." }, { status: 400 });
-      if (!allowlist.includes(id)) allowlist.push(id);
-    }
-    if (typeof body.remove === "string") {
-      const id = normalizeAccountId(body.remove);
-      state = { ...state, allowlist: allowlist.filter((item) => item !== id && item !== secrets.recipientId) };
-    } else {
-      state = { ...state, allowlist };
-    }
-    state = await saveState(state);
+    const state = await updateState((current) => {
+      let state = current;
+      if (typeof body.killed === "boolean") {
+        state = { ...state, killed: body.killed };
+        state = pushLog(state, {
+          action: "info",
+          reason: body.killed
+            ? "Kill switch turned on. Demo sends and the agent are stopped."
+            : "Kill switch turned off. Demo sends and the agent may run again.",
+        });
+      }
+      const allowlist = state.allowlist.length ? [...state.allowlist] : [secrets.recipientId];
+      if (typeof body.allow === "string") {
+        const id = normalizeAccountId(body.allow);
+        if (!allowlist.includes(id)) allowlist.push(id);
+        state = { ...state, allowlist };
+      }
+      if (typeof body.remove === "string") {
+        const id = normalizeAccountId(body.remove);
+        state = { ...state, allowlist: allowlist.filter((item) => item !== id && item !== secrets.recipientId) };
+      }
+      return state;
+    });
     const policy = demoStoredPolicy(secrets.recipientId, state.killed, state.allowlist.length ? state.allowlist : [secrets.recipientId]);
     return Response.json({
       policy,

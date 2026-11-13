@@ -17,6 +17,28 @@ import {
 } from "./state";
 import { executeDemoTransfer } from "./transfer";
 
+async function commitTick(state: AgentState): Promise<AgentState> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      return await saveState(state);
+    } catch (err) {
+      if (!String(err instanceof Error ? err.message : err).includes("concurrently")) throw err;
+      const latest = await loadState();
+      const logs = [...latest.logs];
+      for (const log of state.logs) {
+        if (!logs.some((item) => item.id === log.id)) logs.push(log);
+      }
+      const rules = latest.rules.map((rule) => {
+        const updated = state.rules.find((item) => item.id === rule.id);
+        return updated && updated.lastRunAt && (!rule.lastRunAt || updated.lastRunAt > rule.lastRunAt) ? { ...rule, lastRunAt: updated.lastRunAt, lastResult: updated.lastResult } : rule;
+      });
+      state = { ...latest, killed: latest.killed, rules, logs: logs.slice(-80), spentDay: state.spentDay || latest.spentDay, spentYocto: state.spentYocto || latest.spentYocto };
+      await new Promise((resolve) => setTimeout(resolve, 40 + attempt * 70));
+    }
+  }
+  throw new Error("Could not persist the agent tick.");
+}
+
 export type TickResult = {
   ran: number;
   skipped: number;
@@ -40,7 +62,7 @@ export async function runAgentTick(reason: string): Promise<TickResult> {
   const secrets = getDemoSecrets();
   let state = await loadState();
   if (state.killed) {
-    state = await saveState(pushLog(state, {
+    state = await commitTick(pushLog(state, {
       action: "skipped",
       reason: `Kill switch is on. The agent did not run (${reason}).`,
     }));
@@ -138,6 +160,6 @@ export async function runAgentTick(reason: string): Promise<TickResult> {
     action: "info",
     reason: `Agent tick finished (${reason}). Ran ${ran}, skipped ${skipped}.`,
   });
-  state = await saveState(state);
+  state = await commitTick(state);
   return { ran, skipped, blocked: false, logs: state.logs, rules: state.rules, killed: false };
 }

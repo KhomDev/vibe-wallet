@@ -6,7 +6,7 @@ import { formatNear, parseNear } from "@/lib/units";
 import { clientIp, getDemoSecrets } from "@/lib/server/env";
 import { demoStoredPolicy } from "@/lib/server/policy";
 import { bumpRate, checkRate } from "@/lib/server/rate-limit";
-import { addSpent, loadState, pushLog, saveState, spentToday } from "@/lib/server/state";
+import { addSpent, loadState, pushLog, spentToday, updateState } from "@/lib/server/state";
 import { executeDemoTransfer, previewSend } from "@/lib/server/transfer";
 
 export const runtime = "nodejs";
@@ -68,14 +68,15 @@ export async function POST(request: Request): Promise<Response> {
       userConfirmed: true,
       confirmationPhrase: phrase,
     });
-    state = bumpRate(addSpent(state, preview.amountYocto), rate.key);
-    state = pushLog(state, {
-      action: "transfer",
-      reason: `Demo send of ${amountNear} NEAR to ${recipient}, confirmed in the app.`,
-      hash: result.hash,
-      explorerUrl: explorerTxUrl(result.hash),
+    await updateState((current) => {
+      let next = bumpRate(addSpent(current, preview.amountYocto), rate.key);
+      return pushLog(next, {
+        action: "transfer",
+        reason: `Demo send of ${amountNear} NEAR to ${recipient}, confirmed in the app.`,
+        hash: result.hash,
+        explorerUrl: explorerTxUrl(result.hash),
+      });
     });
-    await saveState(state);
     const { readBalance } = await import("@/lib/near/read");
     const balance = await readBalance(secrets.accountId);
     return Response.json({

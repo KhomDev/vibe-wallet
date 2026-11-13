@@ -2,7 +2,7 @@ import { isValidAccountId, normalizeAccountId } from "@/lib/account-id";
 import { publicError } from "@/lib/errors";
 import { parseNear } from "@/lib/units";
 import { getDemoSecrets } from "@/lib/server/env";
-import { loadState, pushLog, saveState, type AgentRule } from "@/lib/server/state";
+import { pushLog, updateState, type AgentRule } from "@/lib/server/state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,17 +25,16 @@ export async function POST(request: Request): Promise<Response> {
   }
   try {
     const secrets = getDemoSecrets();
-    let state = await loadState();
     if (typeof body.deleteId === "string") {
-      state = { ...state, rules: state.rules.filter((rule) => rule.id !== body.deleteId) };
-      state = pushLog(state, { action: "info", reason: `Removed agent rule ${body.deleteId}.` });
-      state = await saveState(state);
+      const state = await updateState((state) => {
+        const next = { ...state, rules: state.rules.filter((rule) => rule.id !== body.deleteId) };
+        return pushLog(next, { action: "info", reason: `Removed agent rule ${body.deleteId}.` });
+      });
       return Response.json({ rules: state.rules, logs: state.logs.slice(-40).reverse() });
     }
 
     const amountNear = typeof body.amountNear === "string" ? body.amountNear.trim() : "";
     parseNear(amountNear);
-    if (state.rules.length >= 12) return Response.json({ error: "The demo agent already has 12 rules." }, { status: 400 });
 
     if (body.type === "schedule_send") {
       const cadence = body.cadence === "daily" ? "daily" : "weekly_friday";
@@ -52,9 +51,10 @@ export async function POST(request: Request): Promise<Response> {
         recipient,
         cadence,
       };
-      state = { ...state, rules: [...state.rules, rule] };
-      state = pushLog(state, { action: "info", ruleId: rule.id, reason: `Added a ${cadence} send of ${amountNear} NEAR to ${recipient}.` });
-      state = await saveState(state);
+      const state = await updateState((state) => {
+        if (state.rules.length >= 12) return state;
+        return pushLog({ ...state, rules: [...state.rules, rule] }, { action: "info", ruleId: rule.id, reason: `Added a ${cadence} send of ${amountNear} NEAR to ${recipient}.` });
+      });
       return Response.json({ rule, rules: state.rules });
     }
 
@@ -71,13 +71,14 @@ export async function POST(request: Request): Promise<Response> {
         belowUsd,
         toSymbol,
       };
-      state = { ...state, rules: [...state.rules, rule] };
-      state = pushLog(state, {
-        action: "info",
-        ruleId: rule.id,
-        reason: `Added a price rule: if NEAR drops below $${belowUsd}, quote a swap of ${amountNear} NEAR to ${toSymbol}. Quote only — Intents have no testnet execution.`,
+      const state = await updateState((state) => {
+        if (state.rules.length >= 12) return state;
+        return pushLog({ ...state, rules: [...state.rules, rule] }, {
+          action: "info",
+          ruleId: rule.id,
+          reason: `Added a price rule: if NEAR drops below $${belowUsd}, quote a swap of ${amountNear} NEAR to ${toSymbol}. Quote only — Intents have no testnet execution.`,
+        });
       });
-      state = await saveState(state);
       return Response.json({ rule, rules: state.rules });
     }
 

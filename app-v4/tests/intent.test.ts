@@ -82,3 +82,15 @@ test("implicit 64-character account ids parse as send recipients", () => {
   const intent = parseIntent(`send 0.1 NEAR to ${recipient}`);
   assert.deepEqual(intent, { type: "send", amountNear: "0.1", recipient });
 });
+
+test("bare names get the network suffix so allowlist entries match sends", async () => {
+  const { resolveAccountInput } = await import("../lib/account-id");
+  assert.equal(resolveAccountInput("Bob"), "bob.testnet");
+  assert.equal(resolveAccountInput("@bob."), "bob.testnet");
+  assert.equal(resolveAccountInput("bob.testnet"), "bob.testnet");
+  assert.equal(resolveAccountInput("alice.near"), "alice.near");
+  assert.equal(resolveAccountInput("a".repeat(64)), "a".repeat(64));
+  assert.equal(resolveAccountInput("bob", "mainnet"), "bob.near");
+  assert.deepEqual(parseIntent("allow bob"), { type: "allow", recipient: "bob.testnet" });
+  assert.deepEqual(parseIntent("send 0.2 near to bob"), { type: "send", amountNear: "0.2", recipient: "bob.testnet" });
+});

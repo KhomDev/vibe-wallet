@@ -1,4 +1,5 @@
-import { isValidAccountId, normalizeAccountId } from "./account-id";
+import { isValidAccountId, resolveAccountInput } from "./account-id";
+import { NETWORK_ID } from "./config";
 
 export type WalletIntent =
   | { type: "get_balance" }
@@ -7,6 +8,7 @@ export type WalletIntent =
   | { type: "history" }
   | { type: "explain_last" }
   | { type: "show_safety" }
+  | { type: "show_allowlist" }
   | { type: "stop" }
   | { type: "resume" }
   | { type: "allow"; recipient: string }
@@ -26,6 +28,20 @@ export type WalletIntent =
 const AMOUNT = "([0-9]+(?:\\.[0-9]+)?)";
 const ACCOUNT = "([a-z0-9][a-z0-9._-]{1,63})(?![:\\w])";
 
+// "Who can I send to?", "show my allowlist", "list allow list entries", "my contacts", "allowed recipients".
+const ALLOWLIST_QUERY = new RegExp(
+  [
+    "\\bwho (?:can|may) i (?:send|pay|transfer)(?: (?:to|money|near))?\\b",
+    "\\b(?:show|list|view|see|display|open|read|get|what(?:'s| is| are)(?: in)?)(?: me)?(?: (?:my|the|all))? (?:allow ?list|white ?list|allowed|contacts|trusted)",
+    "\\ballow ?list(?: entries| accounts| contacts)?$",
+    "^(?:my )?allow ?list\\b",
+    "\\b(?:my|saved) contacts\\b",
+    "^contacts$",
+    "\\ballowed (?:recipients|accounts|contacts|people)\\b",
+    "\\btrusted (?:recipients|accounts|contacts)\\b",
+  ].join("|"),
+);
+
 export function normalizeUtterance(input: string): string {
   return input
     .toLowerCase()
@@ -35,7 +51,7 @@ export function normalizeUtterance(input: string): string {
 }
 
 function asAccount(value: string): string | null {
-  const accountId = normalizeAccountId(value);
+  const accountId = resolveAccountInput(value, NETWORK_ID);
   return isValidAccountId(accountId) ? accountId : null;
 }
 
@@ -49,7 +65,7 @@ function asSymbol(value: string): "USDT" | "USDC" | "ETH" | null {
 
 export function parseIntent(input: string): WalletIntent {
   const text = normalizeUtterance(input);
-  if (!text) return { type: "unknown", reason: "Say what you want to do with the wallet." };
+  if (!text) return { type: "unknown", reason: "yo, what do you wanna do?" };
 
   if (/\b(stop|kill switch|freeze|halt)\b/.test(text) && !/\b(do not|don't|dont)\b/.test(text)) {
     return { type: "stop" };
@@ -58,7 +74,8 @@ export function parseIntent(input: string): WalletIntent {
     return { type: "resume" };
   }
   if (/\b(help|what can you do|what can i say)\b/.test(text)) return { type: "help" };
-  if (/\b(safety|limits|allowlist|kill switch status)\b/.test(text)) return { type: "show_safety" };
+  if (ALLOWLIST_QUERY.test(text)) return { type: "show_allowlist" };
+  if (/\b(safety|limits|kill switch status)\b/.test(text)) return { type: "show_safety" };
   if (/\b(explain|what happened|what did i|last transaction|last tx)\b/.test(text)) {
     return { type: "explain_last" };
   }
@@ -67,9 +84,9 @@ export function parseIntent(input: string): WalletIntent {
   }
 
   const allow = text.match(new RegExp(`\\b(?:allow|trust|whitelist)\\s+${ACCOUNT}`));
-  if (allow) {
+  if (allow && !/^(list|entries|recipients|accounts)$/.test(allow[1])) {
     const recipient = asAccount(allow[1]);
-    if (!recipient) return { type: "unknown", reason: "That allowlist entry is not a NEAR account id." };
+    if (!recipient) return { type: "unknown", reason: "hmm, that's not a NEAR account id." };
     return { type: "allow", recipient };
   }
 
@@ -95,7 +112,7 @@ export function parseIntent(input: string): WalletIntent {
   const scheduled = text.match(new RegExp(`(?:send|transfer|pay)\\s+${AMOUNT}\\s*(?:near|n)?\\s+to\\s+${ACCOUNT}\\s+every\\s+(friday|week|weekly|day|daily)`));
   if (scheduled) {
     const recipient = asAccount(scheduled[2]);
-    if (!recipient) return { type: "unknown", reason: "That recipient is not a valid NEAR account id." };
+    if (!recipient) return { type: "unknown", reason: "hmm, that recipient isn't a valid NEAR account." };
     const cadence = /friday|week/.test(scheduled[3]) ? "weekly_friday" : "daily";
     return { type: "schedule_send", amountNear: scheduled[1], recipient, cadence };
   }
@@ -120,7 +137,7 @@ const swap = text.match(
   const sendTo = text.match(new RegExp(`(?:send|transfer|pay)\\s+${AMOUNT}\\s*(?:near|n)?\\s+to\\s+${ACCOUNT}`));
   if (sendTo) {
     const recipient = asAccount(sendTo[2]);
-    if (!recipient) return { type: "unknown", reason: "That recipient is not a valid NEAR account id." };
+    if (!recipient) return { type: "unknown", reason: "hmm, that recipient isn't a valid NEAR account." };
     return { type: "send", amountNear: sendTo[1], recipient };
   }
 
@@ -130,7 +147,7 @@ const swap = text.match(
 
   return {
     type: "unknown",
-    reason: "Try: What's my balance? Send 0.5 NEAR to bob.testnet. Swap 1 NEAR to USDT. Send 0.2 NEAR to bob.testnet every Friday. If NEAR drops below $2, swap 0.1 NEAR to USDC.",
+    reason: "didn't get that, try \"what's my balance\" or \"send 0.1 to bob\".",
   };
 }
 
@@ -151,6 +168,7 @@ export function sanitizeIntent(value: unknown): WalletIntent | null {
     case "history":
     case "explain_last":
     case "show_safety":
+    case "show_allowlist":
     case "stop":
     case "resume":
     case "help":
@@ -200,21 +218,28 @@ export function sanitizeIntent(value: unknown): WalletIntent | null {
       return { type: "price_rule", belowUsd, amountNear, toSymbol };
     }
     case "unknown":
-      return { type: "unknown", reason: typeof value.reason === "string" ? value.reason.slice(0, 280) : "I did not catch a wallet action." };
+      return { type: "unknown", reason: typeof value.reason === "string" ? value.reason.slice(0, 280) : "didn't catch a wallet thing there." };
     default:
       return null;
   }
 }
 
+function mentioned(haystack: string, recipient: string): boolean {
+  const id = recipient.toLowerCase();
+  if (haystack.includes(id)) return true;
+  const bare = id.replace(/\.(testnet|near)$/, "");
+  return bare !== id && new RegExp(`(^|[^a-z0-9._-])${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9_-])`).test(haystack);
+}
+
 export function acceptModelIntent(message: string, intent: WalletIntent): WalletIntent {
   const haystack = message.toLowerCase();
-  if (intent.type === "send" && !haystack.includes(intent.recipient.toLowerCase())) {
+  if (intent.type === "send" && !mentioned(haystack, intent.recipient)) {
     return parseIntent(message);
   }
-  if (intent.type === "allow" && !haystack.includes(intent.recipient.toLowerCase())) {
+  if (intent.type === "allow" && !mentioned(haystack, intent.recipient)) {
     return parseIntent(message);
   }
-  if (intent.type === "schedule_send" && !haystack.includes(intent.recipient.toLowerCase())) {
+  if (intent.type === "schedule_send" && !mentioned(haystack, intent.recipient)) {
     return parseIntent(message);
   }
   return intent;
@@ -230,6 +255,7 @@ Allowed shapes:
 {"type":"history"}
 {"type":"explain_last"}
 {"type":"show_safety"}
+{"type":"show_allowlist"}
 {"type":"stop"}
 {"type":"resume"}
 {"type":"allow","recipient":"<near account id>"}
@@ -248,4 +274,6 @@ Rules:
 - schedule_send is a standing payment rule, not an immediate transfer.
 - "every Friday" or "every week" is weekly_friday. "every day" is daily.
 - stop means the user wants the kill switch on. That also stops the agent.
-- If there is no wallet action, use unknown.`;
+- show_allowlist lists the accounts the user may send to, with the send limits. Use it for "who can I send to", "show my allowlist", "list allow list entries", "my contacts", "allowed recipients".
+- allow adds one named account. Never use allow for a request to list or show the allowlist.
+- If there is no wallet action, use unknown. Its reason is one short casual sentence (max 15 words), chill Gen Z tone, never formal, e.g. "yo, I only do wallet stuff, try asking your balance."`;

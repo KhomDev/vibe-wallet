@@ -149,6 +149,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .caption {
   text-align: center;
+  overflow-wrap: anywhere;
   font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -385,6 +386,10 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 
 .knob:active { cursor: grabbing; }
+.slider, .slider-inner, .knob { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.slider-locked { filter: grayscale(0.85); opacity: 0.62; }
+.slider-locked .knob { cursor: not-allowed; box-shadow: none; }
+.slider-locked .slider-label { font-size: 0.92rem; color: #57535a; }
 
 .chev {
   position: absolute;
@@ -815,3 +820,29 @@ a.lp-btn-ghost:focus {
   letter-spacing: -0.02em;
   font-size: 1rem;
 }
+
+/* Long account ids and hashes must wrap on narrow phones. */
+.card, .glass, .card li, .glass li { min-width: 0; overflow-wrap: anywhere; }
+
+/* Hands-free conversation bar */
+.icon-btn.hf-on { background: #1f1d22; }
+.icon-btn.hf-on svg { stroke: #fff; }
+.hf-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 14px 8px; padding: 10px 10px 10px 14px;
+  border-radius: 22px; background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(160, 130, 140, 0.18);
+}
+.hf-status { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
+.hf-dot { width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: #b9b4bd; }
+.hf-wake { background: #9ad7c6; }
+.hf-listening { background: #2fbf8f; animation: hf-pulse 1s ease-in-out infinite; }
+.hf-thinking { background: #f2b84b; animation: hf-pulse 0.6s ease-in-out infinite; }
+.hf-speaking { background: #4aa3f0; animation: hf-pulse 0.8s ease-in-out infinite; }
+.hf-stop {
+  flex-shrink: 0; min-width: 96px; height: 52px; border: 0; border-radius: 999px;
+  background: #e2475b; color: #fff; font-weight: 700; font-size: 1.05rem;
+}
+@keyframes hf-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.65; } }
+@media (prefers-reduced-motion: reduce) { .hf-dot { animation: none !important; } }
+.hf-wake-toggle { display: block; margin: 2px auto 0; border: 0; background: none; color: var(--vw-muted); font-size: 0.78rem; padding: 4px 8px; }

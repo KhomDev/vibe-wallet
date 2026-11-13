@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-export type OrbState = "idle" | "listening" | "thinking" | "reviewing" | "confirming" | "done" | "blocked";
+export type OrbState = "idle" | "wake" | "listening" | "thinking" | "speaking" | "reviewing" | "confirming" | "done" | "blocked";
 
 export function HoloOrb({
   state,
@@ -53,7 +53,12 @@ export function HoloOrb({
       const mode = stateRef.current;
       const level = mode === "listening" ? levelRef.current ?? 0 : 0;
       const breathe = reduced ? 1 : 1 + Math.sin(time * 0.0014) * 0.035;
-      const wobble = reduced ? 0 : mode === "listening" ? 0.045 + level * 0.11 : mode === "thinking" ? 0.05 : 0.028;
+      const wobble = reduced ? 0
+        : mode === "listening" ? 0.045 + level * 0.11
+        : mode === "speaking" ? 0.04 + Math.abs(Math.sin(time * 0.011)) * 0.06
+        : mode === "thinking" ? 0.05
+        : mode === "wake" ? 0.022
+        : 0.028;
       const cx = width / 2;
       const cy = height / 2 + Math.sin(time * 0.0011) * (reduced ? 0 : height * 0.012);
       const base = Math.min(width, height) * 0.36 * breathe;

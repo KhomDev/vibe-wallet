@@ -16,7 +16,9 @@ import { addSpend, clearVault, loadActivity, loadPolicy, loadSpend, rememberActi
 import { formatNear, parseNear } from "@/lib/units";
 import { encryptSecret } from "@/lib/vault";
 import { chime, haptic, pop, setSoundMuted, soundMuted } from "@/lib/sounds";
-import { speak, startVoiceInput, stopSpeaking, voiceInputSupported } from "@/lib/voice";
+import { speak, speakAsync, startVoiceInput, stopSpeaking, unlockSpeech, voiceInputSupported } from "@/lib/voice";
+import { HandsFree, NO, YES, type HandsFreeReply, type HandsFreeState } from "@/lib/handsfree";
+import { speakNumber, toSpeech } from "@/lib/speech-text";
 import { ActionCards, type Pending, type ReceiptView } from "./ActionCards";
 import { BubbleBurst } from "./BubbleBurst";
 import { Brand, Stage, TabBar } from "./Chrome";
@@ -27,6 +29,7 @@ import { DesignPreview } from "./DesignPreview";
 import { SetupScreen } from "./SetupScreen";
 import { WalletTab } from "./WalletTab";
 import { AgentPanel } from "./AgentPanel";
+import { AllowlistCard } from "./AllowlistCard";
 
 type Turn = { id: string; role: "user" | "assistant"; text: string; source?: IntentSource; note?: string | null };
 
@@ -58,6 +61,7 @@ export function WalletApp() {
   const [phrase, setPhrase] = useState("");
   const [receipt, setReceipt] = useState<ReceiptView | null>(null);
   const [quote, setQuote] = useState<QuoteView | null>(null);
+  const [allowCard, setAllowCard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<IntentSource | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -80,7 +84,14 @@ export function WalletApp() {
   const recRef = useRef<{ stop: () => void } | null>(null);
   const confirmRef = useRef<() => Promise<void>>(async () => {});
   const handleRef = useRef<(text: string) => Promise<void>>(async () => {});
-  const sayRef = useRef<(text: string, source: IntentSource | null, note: string | null) => void>(() => {});
+  const sayRef = useRef<(text: string, source: IntentSource | null, note: string | null, speech?: string) => void>(() => {});
+  const lastSpeechRef = useRef("");
+  const convoRef = useRef<HandsFree | null>(null);
+  const voiceConfirmRef = useRef(false);
+  const handleTextRef = useRef<(raw: string) => Promise<void>>(async () => {});
+  const [convo, setConvo] = useState<HandsFreeState>("off");
+  const [wakeWord, setWakeWord] = useState(true);
+  const [heard, setHeard] = useState<string | null>(null);
   const levelRef = useRef(0);
   const handsFreeRef = useRef(false);
   const levelStopRef = useRef<(() => void) | null>(null);
@@ -143,7 +154,7 @@ export function WalletApp() {
     if (!session || !isDemoSession(session) || !balance || welcomedRef.current) return;
     welcomedRef.current = true;
     sayRef.current(
-      `You're in the shared testnet demo. You have ${balance.availableNear} NEAR. Tap a suggestion, type a command, or tap the orb to talk.`,
+      `yo, demo wallet's ready with ${balance.availableNear} NEAR. tap, type, or talk.`,
       null,
       null,
     );
@@ -225,9 +236,12 @@ export function WalletApp() {
     setTurns((current) => [...current, { ...turn, id: crypto.randomUUID() }].slice(-30));
   }
 
-  function say(text: string, nextSource: IntentSource | null, nextNote: string | null) {
+  function say(text: string, nextSource: IntentSource | null, nextNote: string | null, speech?: string) {
     pushTurn({ role: "assistant", text, source: nextSource ?? undefined, note: nextNote });
-    speak(text);
+    const spoken = speech ?? toSpeech(text);
+    lastSpeechRef.current = spoken;
+    // In hands-free mode the conversation loop speaks, so the mic is muted first.
+    if (!convoRef.current?.active) speak(spoken);
   }
   sayRef.current = say;
 
@@ -268,6 +282,7 @@ export function WalletApp() {
     setInterim("");
     setError(null);
     setVoiceHint(null);
+    setAllowCard(false);
     pushTurn({ role: "user", text });
     setBusy("Reading your request…");
     try {
@@ -284,56 +299,78 @@ export function WalletApp() {
     }
   }
 
+  function sendLine(check: { blockReason: string | null; needsPhrase: boolean }, amountNear: string, recipient: string): string {
+    if (check.blockReason) return `nah, blocked: ${check.blockReason.replace(/\.$/, "").toLowerCase()}.`;
+    return check.needsPhrase
+      ? `${amountNear} NEAR to ${recipient}? type the phrase, then slide.`
+      : `${amountNear} NEAR to ${recipient}? slide to send.`;
+  }
+
   async function applyIntent(intent: WalletIntent, nextSource: IntentSource, nextNote: string | null) {
     const current = sessionRef.current;
     if (!current) return;
     if (intent.type === "stop") {
       commitPolicy({ ...policyRef.current, killed: true });
       setPending(null);
-      say("Sending is stopped. I can still read your balance, history, and quotes.", nextSource, nextNote);
+      say("kill switch on 🛑 nothing leaves, balance and quotes still work.", nextSource, nextNote);
       return;
     }
     if (intent.type === "get_balance") {
       const next = await refreshBalance();
-      say(`You have ${next.availableNear} NEAR available. Total ${next.totalNear} NEAR, with ${next.storageNear} NEAR locked for storage.`, nextSource, nextNote);
+      say(`yo, you've got ${next.availableNear} NEAR to spend.`, nextSource, nextNote);
       return;
     }
     if (intent.type === "history") {
       const items = await refreshHistory();
-      say(items.length ? `I found ${items.length} recent transactions. The latest is ${items[0].hash}.` : "No transactions yet.", nextSource, nextNote);
+      say(items.length ? `found ${items.length} recent txs, newest is up top.` : "no txs yet, pretty quiet.", nextSource, nextNote);
+      setTab("wallet");
       return;
     }
     if (intent.type === "explain_last") {
       const items = await refreshHistory();
-      say(items[0] ? explainTransaction(items[0], current.accountId) : "I cannot see a transaction on this account yet.", nextSource, nextNote);
+      say(items[0] ? explainTransaction(items[0], current.accountId) : "can't see any tx on this account yet.", nextSource, nextNote, items[0] ? "here's your last tx, details on screen." : undefined);
       return;
     }
     if (intent.type === "quote_swap") {
       const nextQuote = await requestQuote({ accountId: current.accountId, amountNear: intent.amountNear, toSymbol: intent.toSymbol });
       setQuote(nextQuote);
-      say(`Quote only. ${nextQuote.amountInFormatted} NEAR would return about ${nextQuote.amountOutFormatted} ${nextQuote.destinationSymbol}. Nothing was signed.`, nextSource, nextNote);
+      say(`quote only: ${nextQuote.amountInFormatted} NEAR gets you about ${nextQuote.amountOutFormatted} ${nextQuote.destinationSymbol}, nothing signed.`, nextSource, nextNote);
+      return;
+    }
+    if (intent.type === "show_allowlist") {
+      const current = policyRef.current;
+      setQuote(null);
+      setAllowCard(true);
+      const list = current.allowlist;
+      say(
+        list.length
+          ? `you can send to ${list.length} ${list.length === 1 ? "account" : "accounts"}, up to ${current.perTxNear} NEAR a pop.`
+          : `allowlist's empty, say "allow name.testnet" to add someone.`,
+        nextSource,
+        nextNote,
+      );
       return;
     }
     if (intent.type === "help" || intent.type === "show_safety") {
-      say("Ask for your balance, a send, a swap quote, a Friday payment, or a price-trigger rule. Say stop to freeze sending and the agent. Limits, the allowlist, and the agent log are in the wallet tab.", nextSource, nextNote);
+      say("try balance, send 0.1 to bob, a swap quote, or stop sending to freeze.", nextSource, nextNote);
       return;
     }
     if (intent.type === "resume") {
       setPending({ kind: "resume" });
       setPhrase("");
-      say("To resume sending, enter your confirm phrase and confirm.", nextSource, nextNote);
+      say("type your confirm phrase to turn sending back on.", nextSource, nextNote);
       return;
     }
     if (intent.type === "allow") {
       setPending({ kind: "allow", recipient: intent.recipient });
       setPhrase("");
-      say(`Allow ${intent.recipient}? Enter the confirm phrase and confirm.`, nextSource, nextNote);
+      say(`add ${intent.recipient} to your allowlist? type the phrase to lock it in.`, nextSource, nextNote);
       return;
     }
     if (intent.type === "set_limit") {
       setPending({ kind: "limits", perTxNear: intent.perTxNear, dailyNear: intent.dailyNear, thresholdNear: intent.thresholdNear });
       setPhrase("");
-      say("I drafted a limits change. Enter the confirm phrase and confirm. I cannot change limits on my own.", nextSource, nextNote);
+      say("drafted new limits, type the phrase to lock them in.", nextSource, nextNote);
       return;
     }
     if (intent.type === "run_agent") {
@@ -342,10 +379,10 @@ export function WalletApp() {
       setAgentRules(result.rules);
       setAgentLogs(result.logs);
       if (result.blocked) {
-        say("The kill switch is on, so the agent did not run.", nextSource, nextNote);
+        say("kill switch is on, so the agent's chilling.", nextSource, nextNote);
       } else {
         const last = result.logs.find((log) => log.action === "transfer" || log.action === "quote" || log.action === "blocked") || result.logs[0];
-        say(last ? last.reason : `Agent tick finished. Ran ${result.ran}, skipped ${result.skipped}.`, nextSource, nextNote);
+        say(last ? last.reason : `agent ran ${result.ran}, skipped ${result.skipped}.`, nextSource, nextNote, "agent ran, check the log.");
       }
       setTab("wallet");
       return;
@@ -355,24 +392,24 @@ export function WalletApp() {
       setAgentRules(agent.rules);
       setAgentLogs(agent.logs);
       say(agent.killed
-        ? "The kill switch is on. The agent is stopped."
+        ? "kill switch is on, agent's stopped."
         : agent.logs[0]
-          ? `The agent has ${agent.rules.length} rules. Latest: ${agent.logs[0].reason}`
-          : `The agent has ${agent.rules.length} rules and no activity yet.`, nextSource, nextNote);
+          ? `agent's got ${agent.rules.length} rules. latest: ${agent.logs[0].reason}`
+          : `agent's got ${agent.rules.length} rules, nothing yet.`, nextSource, nextNote, `agent's got ${agent.rules.length} rules, log's on screen.`);
       setTab("wallet");
       return;
     }
     if (intent.type === "schedule_send") {
       setPending({ kind: "schedule", recipient: intent.recipient, amountNear: intent.amountNear, cadence: intent.cadence });
       setPhrase("");
-      say(`I can add a ${intent.cadence === "daily" ? "daily" : "Friday"} payment of ${intent.amountNear} NEAR to ${intent.recipient}. Slide to confirm the rule. This does not send yet.`, nextSource, nextNote);
+      say(`${intent.amountNear} NEAR to ${intent.recipient} ${intent.cadence === "daily" ? "every day" : "every Friday"}? slide to set it.`, nextSource, nextNote);
       setTab("orb");
       return;
     }
     if (intent.type === "price_rule") {
       setPending({ kind: "price", belowUsd: intent.belowUsd, amountNear: intent.amountNear, toSymbol: intent.toSymbol });
       setPhrase("");
-      say(`I can watch the NEAR price. If it drops below $${intent.belowUsd}, the agent will fetch a dry quote to swap ${intent.amountNear} NEAR to ${intent.toSymbol}. Quote only — no swap will be executed on testnet. Slide to confirm the rule.`, nextSource, nextNote);
+      say(`if NEAR dips under $${intent.belowUsd} I'll quote ${intent.amountNear} NEAR to ${intent.toSymbol}. slide to set it.`, nextSource, nextNote);
       setTab("orb");
       return;
     }
@@ -390,10 +427,7 @@ export function WalletApp() {
           check: preview.check,
         });
         setPhrase("");
-        const lead = preview.check.blockReason
-          ? `Blocked. ${preview.check.blockReason}`
-          : `Sending ${preview.amountNear} NEAR to ${preview.recipient} from the demo account. Estimated fee ${preview.feeNear} NEAR.`;
-        say(`${lead} ${preview.check.blockReason ? "Nothing will be signed." : preview.check.needsPhrase ? "Enter the confirm phrase, then slide to confirm." : "Slide to confirm, or say confirm."}`, nextSource, nextNote);
+        say(sendLine(preview.check, preview.amountNear, preview.recipient), nextSource, nextNote);
         setTab("orb");
         return;
       }
@@ -425,12 +459,44 @@ export function WalletApp() {
         check,
       });
       setPhrase("");
-      const lead = check.blockReason ? `Blocked. ${check.blockReason}` : `Sending ${intent.amountNear} NEAR to ${intent.recipient}. Estimated fee ${formatNear(feeYocto, 8)} NEAR.`;
-      say(`${lead} ${check.blockReason ? "Nothing will be signed." : check.needsPhrase ? "Enter the confirm phrase, then slide to confirm." : "Slide to confirm, or say confirm."}`, nextSource, nextNote);
+      say(sendLine(check, intent.amountNear, intent.recipient), nextSource, nextNote);
       setTab("orb");
       return;
     }
     say(intent.reason, nextSource, nextNote);
+  }
+
+  async function retrySend(recipient: string, amountNear: string) {
+    setError(null);
+    setBusy("Checking that account…");
+    try {
+      await applyIntent({ type: "send", recipient, amountNear }, "local-fallback", null);
+    } catch (err) {
+      setError(publicError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function allowAndRetry(recipient: string, amountNear: string) {
+    const current = sessionRef.current;
+    if (!current) return;
+    setError(null);
+    setBusy("Adding to your allowlist…");
+    try {
+      if (isDemoSession(current)) {
+        const view = await updateDemoPolicy({ allow: recipient });
+        policyRef.current = view.policy;
+        setPolicy(view.policy);
+      } else {
+        commitPolicy({ ...policyRef.current, allowlist: [...new Set([...policyRef.current.allowlist, recipient])] });
+      }
+      await applyIntent({ type: "send", recipient, amountNear }, "local-fallback", null);
+    } catch (err) {
+      setError(publicError(err));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function confirmPending() {
@@ -455,7 +521,7 @@ export function WalletApp() {
       if (card.kind === "resume") {
         commitPolicy({ ...stored, killed: false });
         setPending(null);
-        say("Sending is resumed.", null, null);
+        say("sending's back on ✅", null, null);
         return;
       }
       if (card.kind === "allow") {
@@ -467,13 +533,13 @@ export function WalletApp() {
           commitPolicy({ ...stored, allowlist: [...new Set([...stored.allowlist, card.recipient])] });
         }
         setPending(null);
-        say(`${card.recipient} is on your allowlist.`, null, null);
+        say(`${card.recipient} is on your allowlist now 👍`, null, null);
         return;
       }
       if (card.kind === "limits") {
         if (isDemoSession(current)) {
           setPending(null);
-          say("Demo limits are fixed on the server: 0.3 NEAR per send and 2 NEAR per day.", null, null);
+          say("demo limits are fixed: 0.3 a send, 2 a day.", null, null);
           return;
         }
         const next = {
@@ -485,7 +551,7 @@ export function WalletApp() {
         toPolicy(next);
         commitPolicy(next);
         setPending(null);
-        say("Limits updated.", null, null);
+        say("limits updated 👌", null, null);
         return;
       }
       if (card.kind === "schedule") {
@@ -493,7 +559,7 @@ export function WalletApp() {
         const json = await addAgentRule({ type: "schedule_send", recipient: card.recipient, amountNear: card.amountNear, cadence: card.cadence });
         setAgentRules(json.rules ?? []);
         setPending(null);
-        say(`Rule saved. I will send ${card.amountNear} NEAR to ${card.recipient} ${card.cadence === "daily" ? "every day" : "every Friday"}, unless the kill switch or a limit stops me. Say run the agent to try it now.`, null, null);
+        say(`rule set: ${card.amountNear} NEAR to ${card.recipient} ${card.cadence === "daily" ? "every day" : "every Friday"} 📅`, null, null);
         return;
       }
       if (card.kind === "price") {
@@ -501,7 +567,7 @@ export function WalletApp() {
         const json = await addAgentRule({ type: "price_rule", belowUsd: card.belowUsd, amountNear: card.amountNear, toSymbol: card.toSymbol });
         setAgentRules(json.rules ?? []);
         setPending(null);
-        say(`Price rule saved. If NEAR drops below $${card.belowUsd}, the agent will fetch a dry ${card.toSymbol} quote for ${card.amountNear} NEAR. No swap will be executed on testnet.`, null, null);
+        say(`price watch on: under $${card.belowUsd}, I quote ${card.amountNear} NEAR to ${card.toSymbol}.`, null, null);
         return;
       }
       if (card.check.blockReason) return;
@@ -528,7 +594,7 @@ export function WalletApp() {
         window.setTimeout(() => setFlash(null), 8000);
         const nextBalance = await readBalance(current.accountId);
         setBalance(nextBalance);
-        say(`Sent ${result.amountNear} NEAR to ${result.recipient}. Transaction ${result.hash}. View it on the testnet explorer.`, null, null);
+        say(`done, sent ${result.amountNear} to ${result.recipient} ✌️`, null, null);
         return;
       }
       setBusy("Signing in this browser and sending to testnet…");
@@ -565,7 +631,7 @@ export function WalletApp() {
       window.setTimeout(() => setFlash(null), 8000);
       const nextBalance = await readBalance(current.accountId);
       setBalance(nextBalance);
-      say(`Sent ${card.amountNear} NEAR to ${card.recipient}. Transaction ${result.hash}.`, null, null);
+      say(`done, sent ${card.amountNear} to ${card.recipient} ✌️`, null, null);
     } catch (err) {
       setError(publicError(err));
     } finally {
@@ -617,12 +683,12 @@ export function WalletApp() {
         const expected = policyRef.current.confirmPhrase.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
         if (/^(cancel|never mind|nevermind)$/.test(spoken)) {
           setPending(null);
-          say("Cancelled. Nothing was signed.", null, null);
+          say("cool, cancelled. nothing signed.", null, null);
           return;
         }
         if (card && expected && spoken.includes(expected)) {
           setPhrase(policyRef.current.confirmPhrase);
-          say("Confirm phrase heard. Slide to confirm.", null, null);
+          say("got the phrase, now slide it.", null, null);
           return;
         }
         if (card?.kind === "send" && !card.check.needsPhrase && /^(yes|confirm|send it|do it)$/.test(spoken)) {
@@ -675,7 +741,7 @@ export function WalletApp() {
     haptic(10);
     if (pendingRef.current?.kind === "send") {
       setPending(null);
-      say("Cancelled. Nothing was signed.", null, null);
+      say("cool, cancelled. nothing signed.", null, null);
       return;
     }
     toggleMic();
@@ -767,6 +833,81 @@ export function WalletApp() {
   }
 
   confirmRef.current = confirmPending;
+  handleTextRef.current = handleText;
+
+  function shortName(accountId: string): string {
+    return /^[0-9a-f]{64}$/.test(accountId) ? "that account" : accountId.replace(/\.(testnet|near)$/, "");
+  }
+
+  async function settle() {
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+  }
+
+  async function handsFreeCommand(text: string): Promise<HandsFreeReply> {
+    setHeard(text);
+    const card = pendingRef.current;
+    if (voiceConfirmRef.current && card?.kind === "send") {
+      if (YES.test(text)) {
+        voiceConfirmRef.current = false;
+        pushTurn({ role: "user", text });
+        lastSpeechRef.current = "";
+        await confirmRef.current();
+        await settle();
+        return { speech: lastSpeechRef.current || "hmm, that didn't go through." };
+      }
+      if (NO.test(text)) {
+        voiceConfirmRef.current = false;
+        pushTurn({ role: "user", text });
+        setPending(null);
+        return { speech: "cool, cancelled." };
+      }
+    }
+    voiceConfirmRef.current = false;
+    lastSpeechRef.current = "";
+    await handleTextRef.current(text);
+    await settle();
+    const next = pendingRef.current;
+    if (next?.kind === "send" && !next.check.blockReason && !policyRef.current.killed) {
+      if (next.check.allowlisted && !next.check.needsPhrase) {
+        voiceConfirmRef.current = true;
+        return { speech: `send ${speakNumber(next.amountNear)} to ${shortName(next.recipient)}? say yes to confirm.` };
+      }
+      return { speech: `${shortName(next.recipient)} isn't a trusted contact, so use the slide on screen for this one.` };
+    }
+    if (next && (next.kind === "schedule" || next.kind === "price")) {
+      return { speech: "slide on screen to set that rule." };
+    }
+    return { speech: lastSpeechRef.current || "done." };
+  }
+
+  async function toggleHandsFree() {
+    if (convoRef.current?.active) {
+      convoRef.current.stop();
+      return;
+    }
+    stopMic();
+    unlockSpeech();
+    const engine = new HandsFree({
+      onState: (state) => setConvo(state),
+      onLevel: (level) => { levelRef.current = level; },
+      onHeard: (text) => setHeard(text),
+      onWake: () => { chime(); haptic(10); },
+      onCommand: handsFreeCommand,
+      speak: speakAsync,
+      onError: (message) => setError(message),
+      onEnd: () => {
+        stopSpeaking();
+        setConvo("off");
+        voiceConfirmRef.current = false;
+        convoRef.current = null;
+      },
+    });
+    convoRef.current = engine;
+    setTab("orb");
+    await engine.start({ wakeWord, greeting: wakeWord ? "yo, say hey vibe when you need me." : "yo, I'm listening." });
+  }
+
+  useEffect(() => () => convoRef.current?.stop(), []);
   handleRef.current = handleText;
 
   function forgetWallet() {
@@ -808,7 +949,8 @@ export function WalletApp() {
   }
 
   const demo = isDemoSession(session);
-  const orb: OrbState = listening ? "listening"
+  const orb: OrbState = convo !== "off" ? (convo === "wake" ? "wake" : convo)
+    : listening ? "listening"
     : transcribing || busy ? "thinking"
     : pending?.kind === "send" && pending.check.blockReason ? "blocked"
     : pending?.kind === "send" || pending?.kind === "schedule" || pending?.kind === "price" ? "confirming"
@@ -821,9 +963,11 @@ export function WalletApp() {
   const exampleChips: { label: string; text: string }[] = demo && session.demoRecipient ? [
     { label: "Send 0.1 NEAR to demo friend", text: sendExample },
     { label: "What's my balance?", text: "What's my balance?" },
+    { label: "Who can I send to?", text: "Who can I send to?" },
     { label: "Every Friday send 0.1 NEAR", text: `Every Friday send 0.1 NEAR to ${session.demoRecipient}` },
   ] : [
     { label: sendExample, text: sendExample },
+    { label: "Who can I send to?", text: "Who can I send to?" },
     ...EXAMPLES.filter((example) => !example.startsWith("Send")).map((example) => ({ label: example, text: example })),
   ];
   const available = balance ? Number(balance.availableNear) : 0;
@@ -849,6 +993,16 @@ export function WalletApp() {
             }}
           >
             {muted ? "×" : "♪"}
+          </button>
+          <button
+            className={convo !== "off" ? "icon-btn hf-on" : "icon-btn"}
+            type="button"
+            data-testid="handsfree-toggle"
+            aria-pressed={convo !== "off"}
+            aria-label={convo !== "off" ? "Stop hands-free" : "Start hands-free"}
+            onClick={() => void toggleHandsFree()}
+          >
+            <HeadsetIcon />
           </button>
           <button className="icon-btn" type="button" aria-pressed={listening || transcribing} aria-label={listening ? "Stop recording" : transcribing ? "Transcribing" : "Start recording"} onClick={toggleMic}>
             <MicIcon />
@@ -887,6 +1041,20 @@ export function WalletApp() {
             {voiceHint ? <p className="banner banner-warn mt-2" role="status">{voiceHint}</p> : null}
             {sendPending?.check.warnings.map((warning) => <p key={warning} className="banner banner-warn mt-2">{warning}</p>)}
             {sendPending?.check.blockReason ? <p className="banner banner-danger mt-2" role="alert">{sendPending.check.blockReason}</p> : null}
+            {sendPending && (sendPending.check.similarTo || sendPending.check.allowlisted === false) && !policy.killed ? (
+              <div className="mt-2 grid gap-2" data-testid="recipient-fixes">
+                {sendPending.check.similarTo ? (
+                  <button className="btn btn-primary" type="button" disabled={Boolean(busy)} onClick={() => void retrySend(sendPending.check.similarTo as string, sendPending.amountNear)}>
+                    Did you mean {sendPending.check.similarTo}?
+                  </button>
+                ) : null}
+                {sendPending.check.allowlisted === false ? (
+                  <button className="btn btn-ghost" type="button" disabled={Boolean(busy)} onClick={() => void allowAndRetry(sendPending.recipient, sendPending.amountNear)}>
+                    Add {sendPending.recipient.length > 30 ? `${sendPending.recipient.slice(0, 10)}…` : sendPending.recipient} to allowlist
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {sendPending?.check.needsPhrase ? (
               <label className="mt-3 grid gap-1 text-sm">
                 Type {policy.confirmPhrase}
@@ -904,6 +1072,17 @@ export function WalletApp() {
                 <button className="btn btn-ghost" type="button" onClick={() => setQuote(null)}>Dismiss quote</button>
               </section>
             ) : null}
+            {allowCard && !pending ? (
+              <AllowlistCard
+                policy={policy}
+                onPick={(account) => {
+                  setAllowCard(false);
+                  setDraft(`Send 0.1 NEAR to ${account}`);
+                  window.setTimeout(() => composerRef.current?.focus(), 0);
+                }}
+                onClose={() => setAllowCard(false)}
+              />
+            ) : null}
             {pending && pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" ? (
               <ActionCards
                 pending={pending}
@@ -916,16 +1095,18 @@ export function WalletApp() {
                 busy={Boolean(busy)}
                 onPhrase={setPhrase}
                 onConfirm={() => void confirmPending()}
-                onCancel={() => { setPending(null); say("Cancelled. Nothing was signed.", null, null); }}
+                onCancel={() => { setPending(null); say("cool, cancelled. nothing signed.", null, null); }}
                 onDismissReceipt={() => setReceipt(null)}
                 onDismissQuote={() => setQuote(null)}
               />
             ) : null}
-            <div className="chips" data-testid="command-chips">
-              {exampleChips.map((example) => (
-                <button key={example.label} type="button" onClick={() => void handleText(example.text)}>{example.label}</button>
-              ))}
-            </div>
+            {pending ? null : (
+              <div className="chips" data-testid="command-chips">
+                {exampleChips.map((example) => (
+                  <button key={example.label} type="button" onClick={() => void handleText(example.text)}>{example.label}</button>
+                ))}
+              </div>
+            )}
             <form className="composer" onSubmit={(event) => { event.preventDefault(); void handleText(draft); }}>
               <input
                 ref={composerRef}
@@ -938,6 +1119,11 @@ export function WalletApp() {
               />
               <button className="btn btn-primary" type="submit" disabled={Boolean(busy)}>Ask</button>
             </form>
+            {convo === "off" ? (
+              <button className="hf-wake-toggle" type="button" data-testid="wake-toggle" aria-pressed={wakeWord} onClick={() => setWakeWord((on) => !on)}>
+                Hands-free wake word “hey vibe”: <strong>{wakeWord ? "on" : "off"}</strong> · tap 🎧 to start
+              </button>
+            ) : null}
           </div>
         ) : (
           <WalletTab
@@ -973,7 +1159,7 @@ export function WalletApp() {
             hasAgentKey={Boolean(session.agentSecret)}
             busy={Boolean(busy)}
             onPolicy={commitPolicy}
-            onKill={() => { commitPolicy({ ...policy, killed: true }); say("Sending is stopped.", null, null); }}
+            onKill={() => { commitPolicy({ ...policy, killed: true }); say("kill switch on 🛑", null, null); }}
             onResume={() => { setPending({ kind: "resume" }); setTab("orb"); }}
             onRefreshKeys={() => void listKeys(session.accountId).then(setKeys).catch((err) => setError(publicError(err)))}
             onScopedCall={() => void proveScopedKey()}
@@ -997,7 +1183,7 @@ export function WalletApp() {
           <form className="glass mt-3 grid gap-2" onSubmit={(event) => {
             event.preventDefault();
             void requestQuote({ accountId: session.accountId, amountNear: swapAmount, toSymbol: swapSymbol })
-              .then((next) => { setQuote(next); setSheet(null); setTab("orb"); say(`Quote only. ${next.amountInFormatted} NEAR would return about ${next.amountOutFormatted} ${next.destinationSymbol}. Nothing was signed.`, null, null); })
+              .then((next) => { setQuote(next); setSheet(null); setTab("orb"); say(`quote only: ${next.amountInFormatted} NEAR gets you about ${next.amountOutFormatted} ${next.destinationSymbol}.`, null, null); })
               .catch((err) => setError(publicError(err)));
           }}>
             <h2 className="text-lg font-semibold">Swap quote</h2>
@@ -1014,7 +1200,23 @@ export function WalletApp() {
       </div>
       {(sendPending && !sendPending.check.blockReason) || pending?.kind === "schedule" || pending?.kind === "price" ? (
         <div className="slider-shell" data-testid="slide-confirm">
-          <SlideConfirm disabled={(Boolean(sendPending) && !phraseOk) || Boolean(busy)} onConfirm={() => void confirmPending()} />
+          <SlideConfirm
+            disabled={(Boolean(sendPending) && !phraseOk) || Boolean(busy)}
+            hint={sendPending && !phraseOk ? `Type "${policy.confirmPhrase}" to unlock` : busy ? "Working…" : undefined}
+            onConfirm={() => void confirmPending()}
+          />
+        </div>
+      ) : null}
+      {convo !== "off" ? (
+        <div className="hf-bar" data-testid="handsfree-bar" role="status" aria-live="polite">
+          <div className="hf-status">
+            <span className={`hf-dot hf-${convo}`} aria-hidden />
+            <div className="min-w-0">
+              <strong>{convo === "wake" ? "Say “hey vibe”" : convo === "listening" ? "Listening…" : convo === "thinking" ? "Thinking…" : "Speaking…"}</strong>
+              <span className="block truncate text-xs text-muted">{heard ? `heard: “${heard}”` : "Hands-free · screen stays on"}</span>
+            </div>
+          </div>
+          <button className="hf-stop" type="button" data-testid="handsfree-stop" onClick={() => convoRef.current?.stop()}>Stop</button>
         </div>
       ) : null}
       <TabBar tab={tab} onChange={setTab} />
@@ -1027,6 +1229,16 @@ function MicIcon() {
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
       <rect x="6" y="2" width="6" height="9" rx="3" fill="none" stroke="#2c2a2e" strokeWidth="1.5" />
       <path d="M4 8.5a5 5 0 0 0 10 0M9 13.5V16" fill="none" stroke="#2c2a2e" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HeadsetIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden fill="none" stroke="#2c2a2e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+      <rect x="3" y="14" width="4" height="6" rx="1.5" />
+      <rect x="17" y="14" width="4" height="6" rx="1.5" />
     </svg>
   );
 }

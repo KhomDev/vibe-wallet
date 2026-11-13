@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.6.2",
+    "@vercel/blob": "^2.9.0",
     "framer-motion": "^12.43.0",
     "near-api-js": "^7.5.3",
     "next": "15.5.29",

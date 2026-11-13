@@ -43,10 +43,13 @@ function tmpPath(): string {
 
 async function readBlob(): Promise<AgentState | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  const url = process.env.AGENT_STATE_BLOB_URL;
-  if (!token || !url) return null;
+  if (!token) return null;
   try {
-    const response = await fetch(url, {
+    const { list } = await import("@vercel/blob");
+    const { blobs } = await list({ prefix: "vibe-wallet/agent-state", token, limit: 5 });
+    const item = blobs.find((blob) => blob.pathname.includes("agent-state")) ?? blobs[0];
+    if (!item) return null;
+    const response = await fetch(item.url, {
       headers: { authorization: `Bearer ${token}` },
       cache: "no-store",
       signal: AbortSignal.timeout(8_000),
@@ -62,22 +65,15 @@ async function writeBlob(state: AgentState): Promise<string | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
   try {
-    const response = await fetch("https://blob.vercel-storage.com/vibe-wallet/agent-state.json", {
-      method: "PUT",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "x-api-version": "7",
-        "x-add-random-suffix": "0",
-        "x-allow-overwrite": "true",
-        "x-cache-control-max-age": "0",
-      },
-      body: JSON.stringify(state),
-      signal: AbortSignal.timeout(8_000),
+    const { put } = await import("@vercel/blob");
+    const blob = await put("vibe-wallet/agent-state.json", JSON.stringify(state), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      token,
+      cacheControlMaxAge: 0,
     });
-    if (!response.ok) return null;
-    const json = await response.json() as { url?: string };
-    return json.url || null;
+    return blob.url;
   } catch {
     return null;
   }

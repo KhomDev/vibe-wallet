@@ -27,27 +27,41 @@ These tests cover:
 - API routes: `/api/intent` (local fallback, silent 401/402, successful NEAR AI parse, `reasoning_content` fallback) and `/api/transcribe` (missing key, missing audio, Whisper success)
 - Server routes do not import the browser signer
 
-Results (recorded after the production-ready run on 13 November 2026):
+Results, recorded 13 November 2026 in the afternoon, Europe/Budapest (CET, UTC+1):
 
 | Suite | Result |
 | --- | --- |
-| `npm run lint` | _pending_ |
-| `npm run typecheck` | _pending_ |
-| `npm test` (unit + API route tests) | _pending_ |
+| `npm run lint` | 0 errors, 6 warnings (`@next/next/no-img-element` on the landing page) |
+| `npm run typecheck` | 0 errors |
+| `npm test` (unit + API route tests) | 19/19 passed |
+
+`npm audit` after safe overrides for `postcss` (8.5.32) and `zod` (4.6.7): 0 high, 0 critical. Six moderate findings remain in dev-only `minimatch` / typescript-eslint. Forcing a Next 16 or `@vercel/blob` 2.4.0 downgrade was not safe, so those were not applied.
 
 ## Production end-to-end
 
-Two layers are run against `https://vibe-wallet-flame.vercel.app`:
+Two layers were run against `https://vibe-wallet-flame.vercel.app` after deployment `dpl_BVioz4KJkVEnZsV5rYQXvzpdKFar` (aliased at 13 November 2026, Europe/Budapest):
 
 1. Playwright (`npm run test:e2e`): landing page, CTA opening the app, typed commands, voice via a fake audio fixture posted to `/api/transcribe`, slide-to-confirm testnet send, Wallet tab, APK download returning HTTP 200.
-2. The existing production API/script suite in `/tmp/vw-tools/e2e-prod.py` (landing, APK, manifest, demo session, policy blocks, real send, kill switch, agent quote run, cron auth).
-
-Results (recorded after the production deploy on 13 November 2026):
+2. The production API suite (landing, APK, manifest, demo session, policy blocks, real send, kill switch, agent quote run, cron auth).
 
 | Suite | Result |
 | --- | --- |
-| Playwright production e2e | _pending_ |
-| Production API e2e (`e2e-prod.py`) | _pending_ |
+| Playwright production e2e | 2/2 passed (43.3s) |
+| Production API e2e | 17/17 passed. Real send: https://testnet.nearblocks.io/txns/DkxWEEVkFEYc5yDQuCYUaZs4sxUVAf3H2x9skeLTnCCx |
+
+Spoken-audio checks against production `/api/transcribe` then `/api/intent`, same afternoon:
+
+| Clip | Transcript source | Transcript | Intent | Latency (transcribe + intent) |
+| --- | --- | --- | --- | --- |
+| "what's my balance" (wav) | near-ai-whisper | What's my balance? | near-ai `get_balance` | 1230 ms + 3801 ms |
+| "what's my balance" (webm) | near-ai-whisper | What's my balance? | near-ai `get_balance` | 1106 ms + 1867 ms |
+| "send 0.1 NEAR to a94ddd8e…" (webm, TTS of a 64-character implicit id) | near-ai-whisper | Heard a near-miss on the hex id | near-ai `send` 0.1, recipient mis-heard | 1399 ms + 10419 ms |
+
+The long implicit account id is hard for TTS and Whisper to copy exactly. Named accounts and the in-app suggestion chips are the reliable path; the Playwright send types the id and confirms it on-chain.
+
+## Secret scan
+
+`gitleaks detect` on git history (11 commits at the time of the first scan, then the new work): no leaks. A working-tree scan only flagged gitignored files (`.env.local`, `.next` cache), which are not in the repository. `.env.example` contains names and public URLs only, no secret values.
 
 ## What's real in those tests
 

@@ -1,11 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 const RECIPIENT = "a94ddd8e89eddfaa4a5c6ed25e809cd73265256e391e04c5bc59b6d83bfa055a";
-const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "../tests/fixtures/whats-my-balance.webm");
-const fixture = readFileSync(fixturePath);
+const fixture = readFileSync(join(process.cwd(), "tests/fixtures/whats-my-balance.webm"));
 
 async function installFakeMicrophone(page: Page) {
   const bytes = Array.from(fixture);
@@ -43,17 +41,17 @@ async function installFakeMicrophone(page: Page) {
 
 async function openDemo(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Vibe Wallet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vibe Wallet", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Try a demo account" }).first().click();
   await expect(page).toHaveURL(/app=1/);
   await expect(page.getByTestId("holo-orb")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("command-input")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/NEAR/)).toBeVisible();
+  await expect(page.getByText("NEAR", { exact: true })).toBeVisible();
 }
 
 test("landing page, CTA opens the app, and the APK download returns 200", async ({ page, request, baseURL }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Vibe Wallet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vibe Wallet", exact: true })).toBeVisible();
   await expect(page.getByAltText(/QR code/i)).toBeVisible();
   const apk = page.getByRole("link", { name: "Download APK" }).first();
   await expect(apk).toBeVisible();
@@ -76,12 +74,12 @@ test("typed commands, voice via fake audio, slide-to-confirm send, and the Walle
 
   await page.getByTestId("command-input").fill("What's my balance?");
   await page.getByRole("button", { name: "Ask" }).click();
-  await expect(page.getByText(/you have|available|NEAR/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".caption")).toContainText(/you have|balance/i, { timeout: 30_000 });
 
   await page.getByTestId("holo-orb").click();
-  await expect(page.getByText(/Recording/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".caption")).toContainText(/Recording/i, { timeout: 10_000 });
   await page.getByTestId("holo-orb").click();
-  await expect(page.getByText(/Transcribing|balance|NEAR/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".caption")).toContainText(/Transcribing|Recording|you have|balance/i, { timeout: 30_000 });
 
   await page.getByTestId("command-input").fill(`send 0.1 NEAR to ${RECIPIENT}`);
   await page.getByRole("button", { name: "Ask" }).click();
@@ -97,5 +95,7 @@ test("typed commands, voice via fake audio, slide-to-confirm send, and the Walle
   expect(href).toMatch(/^https:\/\/testnet\.nearblocks\.io\/txns\//);
 
   await page.getByRole("button", { name: "Wallet" }).click();
-  await expect(page.getByText(/Receive|Account|testnet/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Wallet" })).toHaveClass(/on/);
+  await expect(page.getByText("Shared demo account · testnet only · key not in this browser")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Receive" })).toBeVisible();
 });

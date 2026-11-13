@@ -84,6 +84,9 @@ export function WalletApp() {
   const handsFreeRef = useRef(false);
   const levelStopRef = useRef<(() => void) | null>(null);
   const startMicRef = useRef<() => void>(() => {});
+  const composerRef = useRef<HTMLInputElement | null>(null);
+  const welcomedRef = useRef(false);
+  const [voiceHint, setVoiceHint] = useState<string | null>(null);
   busyRef.current = busy;
   sessionRef.current = session;
   vaultRef.current = vault;
@@ -134,6 +137,16 @@ export function WalletApp() {
     })();
     return () => { cancelled = true; };
   }, [session]);
+
+  useEffect(() => {
+    if (!session || !isDemoSession(session) || !balance || welcomedRef.current) return;
+    welcomedRef.current = true;
+    sayRef.current(
+      `You're in the shared testnet demo. You have ${balance.availableNear} NEAR. Tap a suggestion, type a command, or tap the orb to talk.`,
+      null,
+      null,
+    );
+  }, [session, balance]);
 
   useEffect(() => {
     if (!session || isDemoSession(session) || session.agentPublicKey) return;
@@ -253,6 +266,7 @@ export function WalletApp() {
     setDraft("");
     setInterim("");
     setError(null);
+    setVoiceHint(null);
     pushTurn({ role: "user", text });
     setBusy("Reading your request…");
     try {
@@ -569,9 +583,15 @@ export function WalletApp() {
     setInterim("");
   }
 
+  function focusComposer() {
+    window.setTimeout(() => composerRef.current?.focus(), 50);
+  }
+
   function startMic() {
     if (recRef.current) return;
     handsFreeRef.current = true;
+    setVoiceHint(null);
+    setError(null);
     if (!levelStopRef.current) {
       void startLevelMeter((level) => { levelRef.current = level; }).then((stop) => {
         if (!handsFreeRef.current) stop();
@@ -603,7 +623,13 @@ export function WalletApp() {
         void handleRef.current(text);
       },
       onError: (message) => {
-        if (message.includes("denied")) stopMic();
+        if (message.includes("denied") || message.includes("could not start") || message.includes("still type") || message.includes("Type a command")) {
+          stopMic();
+          setVoiceHint(message);
+          setError(null);
+          focusComposer();
+          return;
+        }
         setError(message);
       },
       onEnd: () => {
@@ -617,7 +643,11 @@ export function WalletApp() {
     });
     if (!recognition) {
       handsFreeRef.current = false;
-      setError("This browser has no speech recognition. You can still type.");
+      setListening(false);
+      const message = "This browser can't use the microphone. Type a command below, or tap a suggestion.";
+      setVoiceHint(message);
+      setError(null);
+      focusComposer();
       return;
     }
     recRef.current = recognition;
@@ -776,16 +806,16 @@ export function WalletApp() {
     : flash === "done" ? "done"
     : "idle";
   const sendExample = demo && session.demoRecipient
-    ? `Send 0.15 NEAR to ${session.demoRecipient}`
+    ? `Send 0.1 NEAR to ${session.demoRecipient}`
     : vault?.other ? `Send 0.2 NEAR to ${vault.other.accountId}` : "Send 0.5 NEAR to bob.testnet";
-  const exampleChips = demo && session.demoRecipient ? [
-    sendExample,
-    `Send 5 NEAR to ${session.demoRecipient}`,
-    "Send 0.15 NEAR to attacker.testnet",
-    `Send 0.15 NEAR to ${session.demoRecipient} every Friday`,
-    "If NEAR drops below $10000, swap 0.1 NEAR to USDC",
-    "Run the agent",
-  ] : [sendExample, ...EXAMPLES.filter((example) => !example.startsWith("Send"))];
+  const exampleChips: { label: string; text: string }[] = demo && session.demoRecipient ? [
+    { label: "Send 0.1 NEAR to demo friend", text: sendExample },
+    { label: "What's my balance?", text: "What's my balance?" },
+    { label: "Every Friday send 0.1 NEAR", text: `Every Friday send 0.1 NEAR to ${session.demoRecipient}` },
+  ] : [
+    { label: sendExample, text: sendExample },
+    ...EXAMPLES.filter((example) => !example.startsWith("Send")).map((example) => ({ label: example, text: example })),
+  ];
   const available = balance ? Number(balance.availableNear) : 0;
   const lastReply = [...turns].reverse().find((turn) => turn.role === "assistant");
   const sendPending = pending?.kind === "send" ? pending : null;
@@ -817,7 +847,7 @@ export function WalletApp() {
       </header>
       <div className="pane">
         {tab === "orb" ? (
-          <div className="relative">
+          <div className="orb-pane">
             {showBalance ? (
               <div className="balance-block">
                 <span className="num">{balance ? <CountUp value={available} digits={available >= 1 ? 2 : 4} /> : "…"}</span>
@@ -842,8 +872,9 @@ export function WalletApp() {
                   Done
                   <a className="fee link underline" href={explorerTxUrl(receipt.hash)} target="_blank" rel="noreferrer">View transaction</a>
                 </>
-              ) : interim ? interim : listening ? "Listening" : lastReply ? lastReply.text : "Just talk to me"}
+              ) : interim ? interim : listening ? "Listening…" : lastReply ? lastReply.text : "Just talk to me. Type a command or tap a suggestion."}
             </div>
+            {voiceHint ? <p className="banner banner-warn mt-2" role="status">{voiceHint}</p> : null}
             {sendPending?.check.warnings.map((warning) => <p key={warning} className="banner banner-warn mt-2">{warning}</p>)}
             {sendPending?.check.blockReason ? <p className="banner banner-danger mt-2" role="alert">{sendPending.check.blockReason}</p> : null}
             {sendPending?.check.needsPhrase ? (
@@ -880,13 +911,21 @@ export function WalletApp() {
                 onDismissQuote={() => setQuote(null)}
               />
             ) : null}
-            <div className="chips">
+            <div className="chips" data-testid="command-chips">
               {exampleChips.map((example) => (
-                <button key={example} type="button" onClick={() => void handleText(example)}>{example}</button>
+                <button key={example.label} type="button" onClick={() => void handleText(example.text)}>{example.label}</button>
               ))}
             </div>
             <form className="composer" onSubmit={(event) => { event.preventDefault(); void handleText(draft); }}>
-              <input className="field" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Or type it" aria-label="Message" />
+              <input
+                ref={composerRef}
+                className="field"
+                data-testid="command-input"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Type a command, or tap a suggestion"
+                aria-label="Type a command"
+              />
               <button className="btn btn-primary" type="submit" disabled={Boolean(busy)}>Ask</button>
             </form>
           </div>

@@ -80,7 +80,12 @@ export function startListening(handlers: {
     );
   };
   recognition.onend = () => handlers.onEnd();
-  recognition.start();
+  try {
+    recognition.start();
+  } catch {
+    handlers.onError("Voice input could not start. Type a command below, or tap a suggestion.");
+    return null;
+  }
   return recognition;
 }
 

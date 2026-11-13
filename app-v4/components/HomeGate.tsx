@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { LandingPage } from "./LandingPage";
 import { WalletApp } from "./WalletApp";
 
@@ -17,14 +18,19 @@ function shouldOpenApp() {
 }
 
 export function HomeGate() {
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"pending" | "landing" | "app">("pending");
 
   useEffect(() => {
     const apply = () => setMode(shouldOpenApp() ? "app" : "landing");
     apply();
     window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
-  }, []);
+    window.addEventListener("popstate", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("popstate", apply);
+    };
+  }, [searchParams]);
 
   if (mode === "pending") {
     return <div className="stage" aria-busy="true" aria-label="Vibe Wallet" />;

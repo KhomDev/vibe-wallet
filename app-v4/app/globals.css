@@ -76,7 +76,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .phone {
   width: min(420px, 100%);
-  height: min(880px, 100dvh);
+  height: min(880px, calc(100dvh - 36px));
   display: flex;
   flex-direction: column;
   position: relative;
@@ -410,9 +410,40 @@ a.btn-ghost:focus {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 0 4px;
+  background: linear-gradient(180deg, rgba(233, 247, 242, 0), #e9f7f2 28%);
 }
 
-.chips { display: flex; gap: 8px; overflow: auto; padding: 8px 0 2px; }
+@media (max-height: 920px) {
+  .orb-hit { width: min(200px, 58vw); height: min(200px, 58vw); }
+  .balance-block .num { font-size: 2.1rem; }
+}
+
+.phone:has(.ios-hint) .orb-hit {
+  width: min(176px, 50vw);
+  height: min(176px, 50vw);
+}
+
+.orb-pane {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.orb-pane .orb-wrap { flex: 1 1 auto; }
+.orb-pane .chips,
+.orb-pane .composer { flex-shrink: 0; }
+
+.composer {
+  position: static;
+  background: none;
+  padding: 10px 0 4px;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; overflow: visible; padding: 8px 0 2px; }
 .chips button {
   border: 0;
   background: rgba(255, 255, 255, 0.55);
@@ -585,7 +616,11 @@ a.lp-btn-ghost:focus {
 
 .lp-hero-art {
   position: relative;
+  display: block;
   min-height: 640px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 .lp-phone {

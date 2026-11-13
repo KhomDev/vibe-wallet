@@ -1,6 +1,5 @@
-const CACHE = "vibe-wallet-v1";
+const CACHE = "vibe-wallet-v2";
 const PRECACHE = [
-  "/?app=1",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -22,12 +21,28 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+function isDocumentRequest(request, url) {
+  if (request.mode === "navigate" || request.destination === "document") return true;
+  const accept = request.headers.get("accept") || "";
+  if (accept.includes("text/html")) return true;
+  if (url.pathname === "/" || url.pathname === "") return true;
+  return false;
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/download/")) return;
+  if (isDocumentRequest(request, url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -37,6 +52,6 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match("/?app=1"))),
+      .catch(() => caches.match(request)),
   );
 });

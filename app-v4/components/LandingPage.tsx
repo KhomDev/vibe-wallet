@@ -69,14 +69,14 @@ export function LandingPage() {
             </div>
           </div>
         </div>
-        <div className="lp-hero-art" aria-hidden="false">
+        <Link className="lp-hero-art" href="/?app=1&demo=1" aria-label="Open the shared demo account">
           <figure className="lp-phone lp-phone-main">
             <img src="/marketing/orb.png" alt="Vibe Wallet on a phone, showing the talking orb" />
           </figure>
           <figure className="lp-phone lp-phone-side">
             <img src="/marketing/confirm.png" alt="Slide to confirm a transfer in Vibe Wallet" />
           </figure>
-        </div>
+        </Link>
       </section>
 
       <section className="lp-features" id="features">

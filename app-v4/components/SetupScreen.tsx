@@ -25,7 +25,8 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
   const [forget, setForget] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [demoBusy, setDemoBusy] = useState(false);
+  const [autoDemo] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
+  const [demoBusy, setDemoBusy] = useState(autoDemo);
   const [busy, setBusy] = useState(false);
   const levelRef = useRef(0);
 
@@ -175,8 +176,15 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
     // eslint-disable-next-line react-hooks/exhaustive-deps -- start the shared demo once when deep-linked from the landing
   }, []);
 
-  if (!booted) {
-    return <Stage><div className="grid h-full place-items-center"><HoloOrb state="thinking" levelRef={levelRef} onPress={() => undefined} /></div></Stage>;
+  if (!booted || (autoDemo && demoBusy && !error)) {
+    return (
+      <Stage>
+        <div className="grid h-full place-items-center gap-3">
+          <HoloOrb state="thinking" levelRef={levelRef} onPress={() => undefined} />
+          <p className="caption">{autoDemo ? "Opening the shared demo…" : ""}</p>
+        </div>
+      </Stage>
+    );
   }
 
   if (vault) {

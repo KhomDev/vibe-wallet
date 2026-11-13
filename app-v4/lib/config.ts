@@ -1,7 +1,7 @@
 export const NETWORK_ID = "testnet";
 
 export const RPC_URL =
-  process.env.NEXT_PUBLIC_NEAR_RPC_URL || "https://rpc.testnet.near.org";
+  process.env.NEXT_PUBLIC_NEAR_RPC_URL || "https://test.rpc.fastnear.com";
 
 export const FAUCET_URL = "https://helper.testnet.near.org/account";
 

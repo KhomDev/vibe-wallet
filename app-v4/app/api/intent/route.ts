@@ -58,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) {
-      return Response.json(local(message, `NEAR AI Cloud returned ${response.status}. Used the local parser instead.`));
+      return Response.json(local(message, "NEAR AI Cloud was unavailable. Used the local parser instead."));
     }
     const payload = await response.json();
     const content = payload?.choices?.[0]?.message?.content;

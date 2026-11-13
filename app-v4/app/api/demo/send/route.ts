@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!isValidAccountId(recipient)) return Response.json({ error: "That recipient is not a valid NEAR account id." }, { status: 400 });
     parseNear(amountNear);
 
-    let state = await loadState();
+    const state = await loadState();
     const policy = toPolicy(demoStoredPolicy(secrets.recipientId, state.killed, state.allowlist.length ? state.allowlist : [secrets.recipientId]));
     const preview = await previewSend({
       accountId: secrets.accountId,
@@ -69,7 +69,7 @@ export async function POST(request: Request): Promise<Response> {
       confirmationPhrase: phrase,
     });
     await updateState((current) => {
-      let next = bumpRate(addSpent(current, preview.amountYocto), rate.key);
+      const next = bumpRate(addSpent(current, preview.amountYocto), rate.key);
       return pushLog(next, {
         action: "transfer",
         reason: `Demo send of ${amountNear} NEAR to ${recipient}, confirmed in the app.`,

@@ -74,7 +74,7 @@ async function writeBlob(state: AgentState, etag?: string): Promise<{ ok: true; 
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return { ok: false, error: "no blob token" };
   try {
-    const { put, BlobPreconditionFailedError } = await import("@vercel/blob");
+    const { put } = await import("@vercel/blob");
     const blob = await put(BLOB_PATH, JSON.stringify(state), {
       access: "private",
       addRandomSuffix: false,

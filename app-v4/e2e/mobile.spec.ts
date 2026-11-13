@@ -8,8 +8,11 @@ async function openDemo(page: Page) {
   const demo = page.getByRole("button", { name: "Try a demo account" });
   const input = page.getByTestId("command-input");
   await expect(demo.or(input).first()).toBeVisible({ timeout: 30_000 });
-  if (await demo.isVisible().catch(() => false)) await demo.click();
-  await expect(page.getByTestId("command-input")).toBeVisible({ timeout: 30_000 });
+  // The demo button is server-rendered, so a click before hydration does nothing; retry until the app opens.
+  await expect(async () => {
+    if (await demo.isVisible().catch(() => false)) await demo.click();
+    await expect(input).toBeVisible({ timeout: 4_000 });
+  }).toPass({ timeout: 45_000 });
   const ok = page.getByRole("button", { name: "OK", exact: true });
   if (await ok.isVisible().catch(() => false)) await ok.click();
 }

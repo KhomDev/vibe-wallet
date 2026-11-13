@@ -103,3 +103,9 @@ Playwright (`e2e/mobile.spec.ts`), with projects `iphone` (iPhone 13 device prof
 An earlier set of runs stopped at the demo's own guard ("at most 8 sends per hour from this network"). The local test server now raises that with `DEMO_SENDS_PER_HOUR`/`DEMO_SENDS_PER_DAY`. Production keeps 8 per hour and 20 per day.
 
 WebKit: Playwright's WebKit build needs system libraries that this machine could not install (the Debian mirror returned errors), so the `iphone` project ran with the iPhone 13 profile (viewport, touch, user agent) on Chromium. Run with `E2E_WEBKIT=1` where WebKit is installed to use the real engine.
+
+### Production check (13 Nov 2026, against vibe-wallet-flame.vercel.app)
+
+- The first run failed every mobile test at `openDemo`. The demo button is server-rendered, and a click before hydration did nothing. `openDemo` now retries the click until the app opens.
+- Rerun: 7 of 8 passed. Android Pixel 7 passed 5 of 5, and iPhone 13 passed 2 of 3. The failure was correct: that day's test sends had used up the demo's 2 NEAR daily cap, so the policy blocked the send ("This would pass your daily limit of 2 NEAR"). The cap resets at 00:00 UTC.
+- The desktop production spec passed 2 of 2.

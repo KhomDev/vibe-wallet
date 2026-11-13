@@ -4,6 +4,12 @@ import { acceptModelIntent, INTENT_SYSTEM_PROMPT, parseIntent, sanitizeIntent, t
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// GLM-5.3-Flash is a reasoning model. A low max_tokens budget can be spent
+// entirely on reasoning_content, leaving message.content null. 1024 leaves
+// room for both, and we also parse reasoning_content as a fallback.
+const NEAR_AI_MAX_TOKENS = 1024;
+const NEAR_AI_TIMEOUT_MS = 15_000;
+
 type IntentResponse = {
   intent: WalletIntent;
   source: "near-ai" | "local-fallback";
@@ -12,6 +18,40 @@ type IntentResponse = {
 
 function local(message: string, note: string | null): IntentResponse {
   return { intent: parseIntent(message), source: "local-fallback", note };
+}
+
+function asText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
+          return part.text;
+        }
+        return "";
+      })
+      .join("");
+    return parts.trim() ? parts : null;
+  }
+  return null;
+}
+
+function messageText(payload: unknown): string | null {
+  const choice = Array.isArray((payload as { choices?: unknown })?.choices)
+    ? (payload as { choices: unknown[] }).choices[0]
+    : null;
+  const message =
+    choice && typeof choice === "object" && choice !== null && "message" in choice
+      ? (choice as { message: unknown }).message
+      : null;
+  if (!message || typeof message !== "object") return null;
+  const record = message as Record<string, unknown>;
+  return (
+    asText(record.content) ??
+    asText(record.reasoning_content) ??
+    asText(record.reasoning)
+  );
 }
 
 function extractJson(text: string): unknown {
@@ -50,20 +90,22 @@ export async function POST(request: Request): Promise<Response> {
       body: JSON.stringify({
         model: NEAR_AI_MODEL,
         temperature: 0,
+        max_tokens: NEAR_AI_MAX_TOKENS,
+        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: INTENT_SYSTEM_PROMPT },
           { role: "user", content: message },
         ],
       }),
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(NEAR_AI_TIMEOUT_MS),
     });
     // 401 (invalid/expired) and 402 (no spending limit / no credits) both fall back silently.
     if (response.status === 401 || response.status === 402 || !response.ok) {
       return Response.json(local(message, "Used the local parser."));
     }
     const payload = await response.json();
-    const content = payload?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
+    const content = messageText(payload);
+    if (!content) {
       return Response.json(local(message, "NEAR AI Cloud returned an empty answer. Used the local parser instead."));
     }
     const sanitized = sanitizeIntent(extractJson(content));

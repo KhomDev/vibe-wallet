@@ -11,6 +11,9 @@ export const INTENTS_API_URL =
 export const NEAR_AI_BASE_URL =
   process.env.NEAR_AI_BASE_URL || "https://cloud-api.near.ai/v1";
 
+// GLM-5.3-Flash is cheap, ready on NEAR AI Cloud, and fast enough for voice.
+// It is a reasoning model; the intent route sets max_tokens and also parses
+// reasoning_content so content is not dropped when the model thinks first.
 export const NEAR_AI_MODEL = process.env.NEAR_AI_MODEL || "z-ai/glm-5.3-flash";
 
 export const SCOPED_CONTRACT_ID = "wrap.testnet";

@@ -34,7 +34,7 @@ Results, recorded 13 November 2026 in the afternoon, Europe/Budapest (CET, UTC+1
 | --- | --- |
 | `npm run lint` | 0 errors, 6 warnings (`@next/next/no-img-element` on the landing page) |
 | `npm run typecheck` | 0 errors |
-| `npm test` (unit + API route tests, including `tests/network.test.ts`) | 23/23 passed |
+| `npm test` (unit + API route tests, including `tests/network.test.ts`) | 28/28 passed (adds `tests/allowlist.test.ts`) |
 | `npm run build` | Passed |
 
 `npm audit` after safe overrides for `postcss` (8.5.32) and `zod` (4.6.7): 0 high, 0 critical. Six moderate findings remain in dev-only `minimatch` / typescript-eslint. Forcing a Next 16 or `@vercel/blob` 2.4.0 downgrade was not safe, so those were not applied.
@@ -74,3 +74,32 @@ The Playwright and API e2e suites perform a real 0.1 NEAR testnet transfer from 
 13 November 2026, afternoon, Europe/Budapest (CET, UTC+1): `scripts/mainnet-proof.ts` executed a 0.01 NEAR transfer through `executeTransfer` and a NEAR → USDC Intents swap through `executeIntentsSwap` on mainnet. Status `SUCCESS`. Links: [docs/MAINNET.md](MAINNET.md).
 
 After that change, production was redeployed and Playwright against `https://vibe-wallet-flame.vercel.app` passed 2/2 (23.8s), including a real slide-to-confirm testnet send.
+
+## Hands-free, wake word, allowlist and slider tests
+
+13 November 2026, late afternoon, Europe/Budapest (CET, UTC+1).
+
+New unit tests:
+
+- `tests/handsfree.test.ts`: wake phrases ("hey vibe", "hey AI", "hey wallet", "yo vibe", with a command in the same breath), stop words versus kill-switch phrases, spoken yes/no for voice confirm, Whisper silence-hallucination filter
+- `tests/speech-text.test.ts`: rounding numbers for speech ("about 4.7"), removing fees, hashes and 64-character ids from speech, short casual fallback replies (15 words or fewer)
+- `tests/allowlist.test.ts`: the `show_allowlist` intent ("who can I send to", "list allow list entries", "my contacts", …), the allowlist card data, and the empty-state help
+- `tests/policy.test.ts` and `tests/intent.test.ts`: allowlisted sends within limits skip the typed phrase, "did you mean" for a typo of a contact, and bare names resolving to `name.testnet`
+
+Playwright (`e2e/mobile.spec.ts`), with projects `iphone` (iPhone 13 device profile) and `android-chromium` (Pixel 7). The Pixel 7 project feeds a real speech clip in as the microphone with `--use-file-for-fake-audio-capture=tests/fixtures/handsfree-balance.wav`:
+
+1. "Who can I send to?" card → tap **Send 0.1** → the command box is prefilled → the slider is unlocked with no phrase field
+2. A typo of the allowlisted account → **Did you mean …?** and **Add … to allowlist** buttons, and no slider
+3. A real pointer drag on the slider → real testnet send → **View transaction**
+4. Full hands-free loop: one tap → on-device VAD fires on the fake mic → "Hey vibe." (wake) → "Send 0.01 NEAR to …" → "Yes, do it." → real testnet send → **Stop**. The transcripts are scripted with a route mock so the conversation is deterministic.
+5. Hands-free with the wake word off: the fake-mic clip goes through the real NEAR AI Whisper and intent calls and gets the balance answer
+
+| Run (local production build, `next start`) | `npm test` | Playwright (10 tests) |
+| --- | --- | --- |
+| 1 | 37/37 | 9/10 (iPhone drag test: the send preview took over 30 s waiting for the NEAR AI intent call; the timeout is now 60 s) |
+| 2 | 37/37 | 10/10 |
+| 3 | 37/37 | 10/10 |
+
+An earlier set of runs stopped at the demo's own guard ("at most 8 sends per hour from this network"). The local test server now raises that with `DEMO_SENDS_PER_HOUR`/`DEMO_SENDS_PER_DAY`. Production keeps 8 per hour and 20 per day.
+
+WebKit: Playwright's WebKit build needs system libraries that this machine could not install (the Debian mirror returned errors), so the `iphone` project ran with the iPhone 13 profile (viewport, touch, user agent) on Chromium. Run with `E2E_WEBKIT=1` where WebKit is installed to use the real engine.

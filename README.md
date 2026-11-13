@@ -56,13 +56,14 @@ The live app runs on **NEAR testnet** by default, so judges can try every flow w
 
 | Feature | What it does |
 | --- | --- |
+| **Hands-free mode + "hey vibe"** | One tap on 🎧 and the phone can lie on the table: say "hey vibe", give a command, hear a short answer, and say "yes" to confirm sends to allowlisted contacts. Energy-gated NEAR AI Whisper clips, Screen Wake Lock, and a big Stop button. Details and limitations: [docs/HANDS-FREE.md](docs/HANDS-FREE.md). |
 | **Voice** | Tap the orb and speak. Audio is recorded on the device and transcribed by NEAR AI Cloud `openai/whisper-large-v3`. Works in Chrome, Safari, Brave, Edge, the Android WebView, and the PWA. |
 | **AI intents via NEAR AI Cloud** | `z-ai/glm-5.3-flash` converts speech or text into a typed intent: balance, send, swap, history, schedule, price rule. A deterministic local parser takes over if the model is unavailable, and the UI says so. Model-invented recipients are rejected. |
 | **On-chain agent rules** | Recurring payments ("every Friday") and price triggers ("if NEAR drops below $2"). A Vercel cron runs the agent daily; judges can press **Run agent now**. Scheduled payments are real transfers inside the same limits. |
 | **Spending guardrails** | Per-transaction cap, daily cap, and an extra confirm phrase above a threshold. Enforced before signing, on the server for the demo account. |
 | **Kill switch** | **Stop all sending** halts every send, including the autonomous agent. Balance, history, and quotes keep working. |
-| **Slide-to-confirm** | Nothing is signed until you physically slide. Blocked commands turn the orb red and it says why out loud. |
-| **Allowlist** | Restrict sends to named accounts only. The demo account is allowlist-only. |
+| **Slide-to-confirm** | Nothing is signed until you physically slide. Sends to allowlisted contacts within your limits need only the slide; anything else also needs the typed confirm phrase, and the slider shows a lock and says how to unlock it. Blocked commands turn the orb red and it says why out loud. |
+| **Allowlist** | Restrict sends to named accounts only. The demo account is allowlist-only. Ask "Who can I send to?" for a card with each contact and a tap-to-send button. A typo of a contact gets "Did you mean …?", and an unknown recipient gets an "Add to allowlist" button. Bare names ("bob") resolve to `bob.testnet`. |
 | **NEAR Intents swaps** | Live 1Click quotes in the app. Executed mainnet swaps are implemented in `lib/server/intents-swap.ts` and proven on-chain (see [Mainnet proof](#mainnet-proof)). |
 | **Scoped agent key** | The app adds a function-call access key limited to two view-style methods with a 0.05 NEAR allowance. A function-call key cannot transfer NEAR. |
 
@@ -78,7 +79,25 @@ No wallet, no sign-up. Each step is *do X → see Y*.
 6. **Type** `Send 5 NEAR to bob.testnet` → **see** the orb turn red and say why it is blocked (for example, over the per-transaction cap or not on the allowlist). Nothing is signed.
 7. **Type** `Swap 1 NEAR to USDC` → **see** a live NEAR Intents quote from the 1Click API, labeled quote-only on testnet.
 8. **Tap** the chip **Every Friday send 0.1 NEAR**, then slide → **see** the rule appear under **Autonomous agent** in the **Wallet** tab. Press **Run agent now** → **see** the agent's action in the **Activity log**.
-9. **Open** the **Wallet** tab and press **Stop all sending** → **see** sends and the agent refuse to run until you press **Resume sending**.
+9. **Tap** the chip **Who can I send to?** → **see** a card with the allowlisted demo friend, the 0.3 NEAR per-send and 2 NEAR daily limits, and a **Send 0.1** button that prefills the command box.
+10. **Open** the **Wallet** tab and press **Stop all sending** → **see** sends and the agent refuse to run until you press **Resume sending**.
+
+## What you can say
+
+| Say or type | What happens |
+| --- | --- |
+| "What's my balance?" | Reads your available, total, and storage-locked NEAR |
+| "Send 0.1 NEAR to bob.testnet" | Policy check, then a confirm card and slide-to-confirm |
+| "Who can I send to?" / "Show my allowlist" / "My contacts" | A card with your allowlisted accounts and limits; tap **Send 0.1** on an entry to prefill a send |
+| "Allow bob.testnet" | Drafts an allowlist addition that needs your confirm phrase |
+| "Set daily limit to 1" | Drafts a limits change that needs your confirm phrase |
+| "Swap 1 NEAR to USDC" | Live NEAR Intents quote |
+| "Every Friday send 0.1 NEAR to bob.testnet" | Adds a recurring agent payment after you slide |
+| "If NEAR drops below $2, swap 0.1 NEAR to USDC" | Adds a price-trigger agent rule |
+| "Run the agent" / "Show agent log" | Runs agent rules now / shows what the agent did |
+| "Show my history" / "Explain my last transaction" | Recent transactions and a plain-language explanation |
+| "Stop sending" / "Resume sending" | Kill switch on / off (resume needs the confirm phrase) |
+| "Hey vibe" (hands-free mode) | Wakes the wallet; then talk normally, say "yes" to confirm a trusted send, "bye" or "stop" to end |
 
 ## Mainnet proof
 
@@ -177,7 +196,8 @@ The model works when an active user makes a handful of swaps per month or upgrad
 
 | Check | Result (13 Nov 2026) |
 | --- | --- |
-| Unit and API route tests (`npm test`) | 23/23 passed |
+| Unit and API route tests (`npm test`) | 37/37 passed, 3 runs in a row |
+| Playwright: desktop Chromium, iPhone 13 viewport, Pixel 7 Chromium with a fake mic (full hands-free loop: wake word, command, spoken yes, real send) | 10/10 on 2 of 3 local runs; 9/10 on the first (a timeout waiting on the NEAR AI intent call) |
 | Typecheck (`npm run typecheck`) | 0 errors |
 | Lint (`npm run lint`) | 0 errors |
 | Production build (`npm run build`) | Passed |

@@ -74,20 +74,19 @@ test("typed commands, voice via fake audio, slide-to-confirm send, and the Walle
 
   await page.getByTestId("command-input").fill("What's my balance?");
   await page.getByRole("button", { name: "Ask" }).click();
-  await expect(page.locator(".caption")).toContainText(/you have|balance/i, { timeout: 30_000 });
+  await expect(page.locator(".caption")).toContainText(/you've got|you have|balance/i, { timeout: 30_000 });
 
   await page.getByTestId("holo-orb").click();
   await expect(page.locator(".caption")).toContainText(/Recording/i, { timeout: 10_000 });
   await page.getByTestId("holo-orb").click();
-  await expect(page.locator(".caption")).toContainText(/Transcribing|Recording|you have|balance/i, { timeout: 30_000 });
+  await expect(page.locator(".caption")).toContainText(/Transcribing|Recording|you've got|you have|balance/i, { timeout: 30_000 });
 
   await page.getByTestId("command-input").fill(`send 0.1 NEAR to ${RECIPIENT}`);
   await page.getByRole("button", { name: "Ask" }).click();
-  const phraseInput = page.getByTestId("confirm-phrase");
-  await expect(phraseInput).toBeVisible({ timeout: 30_000 });
-  await phraseInput.fill("confirm send");
   const slider = page.getByRole("slider", { name: "Slide to confirm" });
   await expect(slider).toBeVisible({ timeout: 30_000 });
+  // The demo friend is allowlisted and 0.1 NEAR is under the cap, so no typed phrase is needed.
+  await expect(page.getByTestId("confirm-phrase")).toHaveCount(0);
   await slider.focus();
   await slider.press("Enter");
   await expect(page.getByRole("link", { name: /View transaction/i })).toBeVisible({ timeout: 60_000 });

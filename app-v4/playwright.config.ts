@@ -20,5 +20,25 @@ export default defineConfig({
       args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", testMatch: /production\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "android-chromium",
+      testMatch: /mobile\.spec\.ts/,
+      use: {
+        ...devices["Pixel 7"],
+        permissions: ["microphone"],
+        launchOptions: {
+          args: [
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            "--use-file-for-fake-audio-capture=tests/fixtures/handsfree-balance.wav",
+            "--autoplay-policy=no-user-gesture-required",
+          ],
+        },
+      },
+    },
+    // WebKit needs system libraries that this box cannot install (apt mirror down); set E2E_WEBKIT=1 where WebKit works.
+    { name: "iphone", testMatch: /mobile\.spec\.ts/, use: { ...devices["iPhone 13"], browserName: process.env.E2E_WEBKIT ? "webkit" : "chromium", permissions: [], launchOptions: {} } },
+  ],
 });

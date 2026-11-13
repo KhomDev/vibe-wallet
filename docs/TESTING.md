@@ -26,6 +26,7 @@ These tests cover:
 - Guardrails: kill switch, per-transaction and daily limits, allowlist, confirm phrase, missing accounts
 - API routes: `/api/intent` (local fallback, silent 401/402, successful NEAR AI parse, `reasoning_content` fallback) and `/api/transcribe` (missing key, missing audio, Whisper success)
 - Server routes do not import the browser signer
+- Network selection: testnet by default, mainnet only on an explicit switch, network-aware explorer URLs, and Intents execution refusing to run off mainnet
 
 Results, recorded 13 November 2026 in the afternoon, Europe/Budapest (CET, UTC+1):
 
@@ -33,7 +34,8 @@ Results, recorded 13 November 2026 in the afternoon, Europe/Budapest (CET, UTC+1
 | --- | --- |
 | `npm run lint` | 0 errors, 6 warnings (`@next/next/no-img-element` on the landing page) |
 | `npm run typecheck` | 0 errors |
-| `npm test` (unit + API route tests) | 19/19 passed |
+| `npm test` (unit + API route tests, including `tests/network.test.ts`) | 23/23 passed |
+| `npm run build` | Passed |
 
 `npm audit` after safe overrides for `postcss` (8.5.32) and `zod` (4.6.7): 0 high, 0 critical. Six moderate findings remain in dev-only `minimatch` / typescript-eslint. Forcing a Next 16 or `@vercel/blob` 2.4.0 downgrade was not safe, so those were not applied.
 
@@ -66,3 +68,9 @@ The long implicit account id is hard for TTS and Whisper to copy exactly. Named 
 ## What's real in those tests
 
 The Playwright and API e2e suites perform a real 0.1 NEAR testnet transfer from the shared demo account. They do not execute a swap. Voice in Playwright uses a recorded fixture (`tests/fixtures/whats-my-balance.webm`) as a fake microphone input; transcription still goes through production `/api/transcribe`.
+
+## Mainnet proof run
+
+13 November 2026, afternoon, Europe/Budapest (CET, UTC+1): `scripts/mainnet-proof.ts` executed a 0.01 NEAR transfer through `executeTransfer` and a NEAR → USDC Intents swap through `executeIntentsSwap` on mainnet. Status `SUCCESS`. Links: [docs/MAINNET.md](MAINNET.md).
+
+After that change, production was redeployed and Playwright against `https://vibe-wallet-flame.vercel.app` passed 2/2 (23.8s), including a real slide-to-confirm testnet send.

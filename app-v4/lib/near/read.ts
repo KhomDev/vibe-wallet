@@ -1,5 +1,5 @@
 import { Account, JsonRpcProvider, KeyPair, keyToImplicitAddress, type KeyPairString } from "near-api-js";
-import { FAUCET_URL, RPC_URL, SCOPED_CONTRACT_ID, SCOPED_METHODS, historyUrl } from "../config";
+import { FAUCET_URL, NETWORK_ID, RPC_URL, SCOPED_CONTRACT_ID, SCOPED_METHODS, historyUrl } from "../config";
 import { mapIndexerTransactions, type HistoryItem } from "../history";
 import { formatNear } from "../units";
 
@@ -145,7 +145,7 @@ export async function assertFullAccessKey(accountId: string, publicKey: string):
     }
   } catch (err) {
     if (err instanceof Error && err.message.includes("full-access")) throw err;
-    throw new Error("That key does not control this account on testnet.");
+    throw new Error(`That key does not control this account on ${NETWORK_ID}.`);
   }
 }
 

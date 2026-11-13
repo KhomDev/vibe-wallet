@@ -5,6 +5,7 @@
  */
 import { Account, KeyPair, PublicKey, actions, type KeyPairString } from "near-api-js";
 import {
+  NETWORK_ID,
   SCOPED_ALLOWANCE_NEAR,
   SCOPED_CALL_METHOD,
   SCOPED_CONTRACT_ID,
@@ -134,7 +135,7 @@ export async function executeTransfer(input: {
     accountExists(input.recipient),
     estimateTransferFee(input.recipient === input.accountId),
   ]);
-  if (!balance) throw new Error("Your account is not visible on testnet.");
+  if (!balance) throw new Error(`Your account is not visible on ${NETWORK_ID}.`);
   const check = assessSend(input.policy, {
     recipient: input.recipient,
     amountYocto: input.amountYocto,

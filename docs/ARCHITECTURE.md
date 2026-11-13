@@ -51,6 +51,10 @@ The Android wrapper declares `RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS`, request
 
 Every send is checked against the kill switch, per-transaction and daily limits, allowlist, and account-existence rules. Demo sends are signed only on the server. Personal-wallet sends are signed only in the browser. API routes under `app/api` and `lib/server` do not import the signer. Quotes are forced to `dry: true`.
 
+## Networks
+
+Testnet is the default. `NEXT_PUBLIC_NEAR_NETWORK=mainnet` switches RPC, explorer, indexer, and the scoped-key contract. Executed Intents swaps run only on mainnet; see [MAINNET.md](MAINNET.md).
+
 ## Agent
 
 Rules live with demo agent state in private Vercel Blob (and are also reflected on NEAR Social testnet in this build). Vercel Cron hits `/api/cron/agent` once a day. Judges can press **Run agent now**. Scheduled payments are real testnet transfers inside the same limits. Price triggers only fetch a dry Intents quote.
@@ -62,5 +66,7 @@ Rules live with demo agent state in private Vercel Blob (and are also reflected 
 | `app-v4/` | Next.js app, API routes, Android project |
 | `app-v4/app/api/` | Intent, transcribe, quote, demo, agent, and cron routes |
 | `app-v4/lib/` | Parser, policy, NEAR helpers, voice recorder |
+| `app-v4/lib/server/intents-swap.ts` | Executed NEAR Intents swap via 1Click (mainnet only) |
+| `app-v4/scripts/mainnet-proof.ts` | Mainnet proof: signer transfer plus executed Intents swap |
 | `docs/` | Architecture, testing notes, and screenshots |
 | `demo/` | Narrated demo video |

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { APK_PATH, APP_NAME, SITE_URL } from "@/lib/site";
+import { MAINNET_PROOF, mainnetTxUrl } from "@/lib/mainnet-proof";
 
 const features = [
   {
@@ -92,6 +93,19 @@ export function LandingPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="lp-install" id="mainnet-proof">
+        <h2>Mainnet proof</h2>
+        <p>The app and the shared demo run on testnet by default. The same signer code and a real NEAR Intents swap were run on NEAR mainnet:</p>
+        <ul>
+          {[MAINNET_PROOF.send, MAINNET_PROOF.swapDeposit, MAINNET_PROOF.swapSettlement].map((tx) => (
+            <li key={tx.hash}>
+              {tx.label}:{" "}
+              <a className="underline break-all" href={mainnetTxUrl(tx.hash)} target="_blank" rel="noreferrer">{tx.hash.slice(0, 10)}…</a>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="lp-install" id="install">

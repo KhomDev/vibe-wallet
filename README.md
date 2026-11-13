@@ -212,8 +212,7 @@ Both put guardrails between an AI and your money. In Vibe Wallet you approve eac
 
 ## Team
 
-- **Sina Jalilian**: product, design, and engineering · X [@Sina02275](https://x.com/Sina02275)
-- GitHub: [KhomDev](https://github.com/KhomDev)
+- **Yura**: builder · GitHub [@KhomDev](https://github.com/KhomDev) · X [@YKhomenkov](https://x.com/YKhomenkov)
 
 ## License
 

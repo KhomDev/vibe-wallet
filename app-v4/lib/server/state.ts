@@ -52,8 +52,13 @@ async function readBlob(): Promise<{ snapshot: BlobSnapshot | null; missing: boo
     const { head, BlobNotFoundError } = await import("@vercel/blob");
     try {
       const meta = await head(BLOB_PATH, { token });
-      const response = await fetch(meta.url, {
-        headers: { authorization: `Bearer ${token}` },
+      const url = `${meta.url}${meta.url.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+      const response = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          "cache-control": "no-cache, no-store",
+          pragma: "no-cache",
+        },
         cache: "no-store",
         signal: AbortSignal.timeout(8_000),
       });

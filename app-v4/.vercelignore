@@ -1,0 +1,7 @@
+android
+cap-www
+capacitor.config.ts
+capacitor.config.json
+*.jks
+*.keystore
+secrets

@@ -1,0 +1,31 @@
+1
+00:00:00,000 --> 00:00:06,000
+Vibe Wallet — a voice wallet for NEAR testnet. Type or speak. Slide to confirm.
+
+2
+00:00:08,000 --> 00:00:20,000
+Open the shared demo account. The private key stays on the server, never in the browser.
+
+3
+00:00:28,000 --> 00:00:50,000
+Type a send, enter the confirm phrase, and slide to confirm. A real testnet transfer is submitted.
+
+4
+00:00:50,000 --> 00:01:05,000
+The receipt includes a testnet explorer link.
+
+5
+00:01:05,000 --> 00:01:25,000
+A send above the 0.3 NEAR limit is blocked. The orb explains why. Nothing is signed.
+
+6
+00:01:25,000 --> 00:01:40,000
+A payment to an account that is not on the allowlist is also blocked.
+
+7
+00:01:40,000 --> 00:01:55,000
+Add a daily payment rule and a price-trigger rule. Price rules only fetch a dry NEAR Intents quote.
+
+8
+00:01:55,000 --> 00:02:10,000
+Run the agent, then turn on the kill switch. The agent stops. Testnet only.

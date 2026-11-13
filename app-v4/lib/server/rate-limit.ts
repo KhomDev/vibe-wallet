@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
 import { type AgentState, utcDay, type RateBucket } from "./state";
 
-const HOUR_LIMIT = 8;
-const DAY_LIMIT = 20;
+// Defaults protect the shared demo. A local test server can raise them with
+// DEMO_SENDS_PER_HOUR / DEMO_SENDS_PER_DAY (never set on production).
+function limit(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
 
 export function hashIp(ip: string, salt: string): string {
   return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 16);
@@ -17,8 +21,10 @@ export function checkRate(state: AgentState, ip: string, salt: string): { ok: tr
   const bucket: RateBucket = state.rates[key] ?? { hourKey: hourKey(), hourCount: 0, dayKey: utcDay(), dayCount: 0 };
   const hour = bucket.hourKey === hourKey() ? bucket.hourCount : 0;
   const day = bucket.dayKey === utcDay() ? bucket.dayCount : 0;
-  if (hour >= HOUR_LIMIT) return { ok: false, key, reason: "Demo rate limit: at most 8 sends per hour from this network." };
-  if (day >= DAY_LIMIT) return { ok: false, key, reason: "Demo rate limit: at most 20 sends per day from this network." };
+  const hourLimit = limit("DEMO_SENDS_PER_HOUR", 8);
+  const dayLimit = limit("DEMO_SENDS_PER_DAY", 20);
+  if (hour >= hourLimit) return { ok: false, key, reason: `Demo rate limit: at most ${hourLimit} sends per hour from this network.` };
+  if (day >= dayLimit) return { ok: false, key, reason: `Demo rate limit: at most ${dayLimit} sends per day from this network.` };
   return { ok: true, key };
 }
 

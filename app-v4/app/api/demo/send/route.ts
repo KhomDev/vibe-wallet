@@ -1,4 +1,5 @@
-import { isValidAccountId, normalizeAccountId } from "@/lib/account-id";
+import { isValidAccountId, resolveAccountInput } from "@/lib/account-id";
+import { NETWORK_ID } from "@/lib/config";
 import { explorerTxUrl } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { toPolicy } from "@/lib/policy";
@@ -21,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   try {
     const secrets = getDemoSecrets();
-    const recipient = typeof body.recipient === "string" ? normalizeAccountId(body.recipient) : "";
+    const recipient = typeof body.recipient === "string" ? resolveAccountInput(body.recipient, NETWORK_ID) : "";
     const amountNear = typeof body.amountNear === "string" ? body.amountNear.trim() : "";
     const phrase = typeof body.phrase === "string" ? body.phrase : "";
     if (!isValidAccountId(recipient)) return Response.json({ error: "That recipient is not a valid NEAR account id." }, { status: 400 });

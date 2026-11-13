@@ -4,7 +4,7 @@ import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { haptic, pop } from "@/lib/sounds";
 
-export function SlideConfirm({ disabled, onConfirm }: { disabled?: boolean; onConfirm: () => void }) {
+export function SlideConfirm({ disabled, hint, onConfirm }: { disabled?: boolean; hint?: string; onConfirm: () => void }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const x = useMotionValue(0);
   const stretch = useMotionValue(1);
@@ -24,7 +24,7 @@ export function SlideConfirm({ disabled, onConfirm }: { disabled?: boolean; onCo
   const fill = useTransform(x, (value) => `${Math.max(0, value + 58)}px`);
 
   return (
-    <div className="slider" aria-disabled={disabled}>
+    <div className={disabled ? "slider slider-locked" : "slider"} aria-disabled={disabled}>
       <div className="slider-inner" ref={trackRef}>
         <motion.div
           style={{ width: fill }}
@@ -33,11 +33,18 @@ export function SlideConfirm({ disabled, onConfirm }: { disabled?: boolean; onCo
         >
           <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,#ffe4ea,#fff6d4,#ddfff4)] opacity-80" />
         </motion.div>
-        <div className="slider-label">slide to confirm</div>
+        <div className="slider-label">
+          {disabled ? (
+            <span className="inline-flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+              {hint ?? "Locked"}
+            </span>
+          ) : "slide to confirm"}
+        </div>
         <span className="chev" aria-hidden>›</span>
         <motion.div
           className="knob"
-          style={{ x, scaleX: stretch }}
+          style={{ x, scaleX: stretch, touchAction: "none" }}
           drag={disabled ? false : "x"}
           dragConstraints={{ left: 0, right: max }}
           dragElastic={0.18}
@@ -67,6 +74,7 @@ export function SlideConfirm({ disabled, onConfirm }: { disabled?: boolean; onCo
           aria-valuemin={0}
           aria-valuemax={100}
           aria-label="Slide to confirm"
+          aria-disabled={disabled}
           tabIndex={0}
           onKeyDown={(event) => {
             if (disabled || done.current) return;
@@ -80,7 +88,7 @@ export function SlideConfirm({ disabled, onConfirm }: { disabled?: boolean; onCo
             }
           }}
         >
-          →
+          {disabled ? "🔒" : "→"}
         </motion.div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isValidAccountId, normalizeAccountId } from "@/lib/account-id";
-import { SCOPED_ALLOWANCE_NEAR, SCOPED_CONTRACT_ID, SCOPED_METHODS } from "@/lib/config";
+import { isValidAccountId, resolveAccountInput } from "@/lib/account-id";
+import { NETWORK_ID, SCOPED_ALLOWANCE_NEAR, SCOPED_CONTRACT_ID, SCOPED_METHODS } from "@/lib/config";
 import { formatNear } from "@/lib/units";
 import { toPolicy, type StoredPolicy } from "@/lib/policy";
 import { isScopedKey, type KeySummary } from "@/lib/near/read";
@@ -64,7 +64,7 @@ export function SafetyPanel({
   }
 
   function addAllow() {
-    const id = normalizeAccountId(allow);
+    const id = resolveAccountInput(allow, NETWORK_ID);
     if (!isValidAccountId(id)) {
       setMessage("That is not a NEAR account id.");
       return;

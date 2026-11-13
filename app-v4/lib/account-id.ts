@@ -14,6 +14,18 @@ export function normalizeAccountId(input: string): string {
   return input.trim().toLowerCase();
 }
 
+/**
+ * Turns what a person typed or said into an account id: lowercases, drops a
+ * leading "@" and trailing punctuation, and adds the network suffix to a bare
+ * name ("bob" -> "bob.testnet"). Implicit 64-hex ids are left alone.
+ */
+export function resolveAccountInput(input: string, network: "testnet" | "mainnet" = "testnet"): string {
+  const raw = normalizeAccountId(input).replace(/^@+/, "").replace(/[.,;:!?]+$/, "");
+  if (!raw || isImplicitAccountId(raw) || raw.includes(".")) return raw;
+  if (/^0x[0-9a-f]{40}$/.test(raw)) return raw;
+  return `${raw}.${network === "mainnet" ? "near" : "testnet"}`;
+}
+
 export function normalizeNewTestnetName(input: string): string {
   const raw = normalizeAccountId(input);
   const accountId = raw.endsWith(".testnet") ? raw : `${raw}.testnet`;

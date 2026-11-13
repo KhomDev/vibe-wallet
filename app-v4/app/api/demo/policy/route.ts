@@ -1,4 +1,5 @@
-import { isValidAccountId, normalizeAccountId } from "@/lib/account-id";
+import { isValidAccountId, normalizeAccountId, resolveAccountInput } from "@/lib/account-id";
+import { NETWORK_ID } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { formatNear } from "@/lib/units";
 import { getDemoSecrets } from "@/lib/server/env";
@@ -17,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   try {
     const secrets = getDemoSecrets();
-    if (typeof body.allow === "string" && !isValidAccountId(normalizeAccountId(body.allow))) {
+    if (typeof body.allow === "string" && !isValidAccountId(resolveAccountInput(body.allow, NETWORK_ID))) {
       return Response.json({ error: "That allowlist entry is not a valid NEAR account id." }, { status: 400 });
     }
     const state = await updateState((current) => {
@@ -33,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       const allowlist = state.allowlist.length ? [...state.allowlist] : [secrets.recipientId];
       if (typeof body.allow === "string") {
-        const id = normalizeAccountId(body.allow);
+        const id = resolveAccountInput(body.allow, NETWORK_ID);
         if (!allowlist.includes(id)) allowlist.push(id);
         state = { ...state, allowlist };
       }

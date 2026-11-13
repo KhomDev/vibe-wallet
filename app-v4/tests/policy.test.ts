@@ -44,8 +44,19 @@ test("allowlist warns by default and can require membership", () => {
 
 test("missing named accounts are blocked and the confirm phrase is required at the threshold", () => {
   assert.match(assessSend(policy, { ...base, accountExists: false }).blockReason ?? "", /does not exist/);
-  const high = assessSend({ ...policy, allowlist: ["bob.testnet"] }, { ...base, amountYocto: parseNear("0.5") });
+  const high = assessSend(policy, { ...base, recipient: "carol.testnet", amountYocto: parseNear("0.5") });
   assert.equal(high.needsPhrase, true);
+  // Allowlisted and within the caps: the slide alone confirms.
+  const trusted = assessSend({ ...policy, allowlist: ["bob.testnet"] }, { ...base, amountYocto: parseNear("0.5") });
+  assert.equal(trusted.needsPhrase, false);
+  assert.equal(trusted.allowlisted, true);
   assert.equal(phraseMatches(policy, "Confirm send!"), true);
   assert.equal(phraseMatches(policy, "send it"), false);
+});
+
+test("a typo of an allowlisted account is flagged with a did-you-mean suggestion", () => {
+  const check = assessSend({ ...policy, allowlist: ["bop.testnet"] }, { ...base, recipient: "bob.testnet" });
+  assert.equal(check.allowlisted, false);
+  assert.equal(check.similarTo, "bop.testnet");
+  assert.equal(check.needsPhrase, true);
 });

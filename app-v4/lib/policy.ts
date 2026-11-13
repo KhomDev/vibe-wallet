@@ -37,6 +37,10 @@ export type SendCheck = {
   warnings: string[];
   phraseReasons: string[];
   needsPhrase: boolean;
+  /** True when the recipient is on the allowlist. */
+  allowlisted?: boolean;
+  /** A known account that differs by a typo or two, offered as "Did you mean". */
+  similarTo?: string | null;
 };
 
 export function defaultStoredPolicy(): StoredPolicy {
@@ -114,9 +118,10 @@ export function assessSend(policy: Policy, facts: SendFacts, ownAccountId?: stri
         ? "This is an unnamed implicit account. Compare the full 64-character id. A typo cannot be reversed."
         : "This implicit account is not on-chain yet. A transfer creates it, and only the matching private key can use the funds.",
     );
-    phraseReasons.push("The recipient is an implicit account.");
+    // An allowlisted implicit id was already checked when it was added.
+    if (!allowlisted) phraseReasons.push("The recipient is an implicit account.");
   }
-  const similar = [...policy.allowlist, ...(ownAccountId ? [ownAccountId] : [])].find((known) => {
+  const similar = allowlisted ? undefined : [...policy.allowlist, ...(ownAccountId ? [ownAccountId] : [])].find((known) => {
     return known !== facts.recipient && levenshtein(known, facts.recipient) <= 2;
   });
   if (similar) {
@@ -127,7 +132,9 @@ export function assessSend(policy: Policy, facts: SendFacts, ownAccountId?: stri
     warnings.push("This is most of your available balance.");
     phraseReasons.push("The amount is most of your available balance.");
   }
-  if (facts.amountYocto >= policy.thresholdYocto) {
+  // Allowlisted recipients within the per-send and daily caps skip the typed
+  // phrase: the slide alone confirms. Everyone else needs it at the threshold.
+  if (!allowlisted && facts.amountYocto >= policy.thresholdYocto) {
     phraseReasons.push(`The amount is at or above your threshold of ${formatNear(policy.thresholdYocto)} NEAR.`);
   }
 
@@ -138,5 +145,7 @@ export function assessSend(policy: Policy, facts: SendFacts, ownAccountId?: stri
     warnings,
     phraseReasons,
     needsPhrase,
+    allowlisted,
+    similarTo: similar && similar !== ownAccountId ? similar : null,
   };
 }

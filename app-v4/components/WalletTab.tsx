@@ -104,7 +104,7 @@ export function WalletTab({
   }, [accountId]);
 
   return (
-    <div className="grid gap-3 pb-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 pb-2 min-w-0">
       <section className="glass wallet-card">
         <div className="label">
           <span>Total Balance</span>
@@ -121,7 +121,7 @@ export function WalletTab({
             <path d="M2 26 C14 26 18 18 28 18 C40 18 42 8 54 10 C66 12 70 22 90 8" fill="none" stroke="#7ddec4" strokeWidth="3" strokeLinecap="round" />
           </svg>
         </div>
-        <p className="mono mt-2 text-xs text-muted">{accountId}</p>
+        <p className="mono mt-2 text-xs text-muted break-all">{accountId}</p>
         {demo ? <p className="mt-2 text-sm">Shared demo account · testnet only · key not in this browser</p> : null}
       </section>
       <div className="actions-3">
@@ -158,7 +158,7 @@ export function WalletTab({
             {history.slice(0, 6).map((item) => (
               <li key={item.hash} className="text-sm">
                 <a className="link underline" href={explorerTxUrl(item.hash)} target="_blank" rel="noreferrer">{item.actions.join(", ") || "transaction"}</a>
-                <span className="mt-1 block text-muted">{item.signer} → {item.receiver}</span>
+                <span className="mt-1 block text-muted break-all">{item.signer} → {item.receiver}</span>
               </li>
             ))}
           </ul>

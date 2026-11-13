@@ -57,8 +57,9 @@ export async function POST(request: Request): Promise<Response> {
       }),
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) {
-      return Response.json(local(message, "NEAR AI Cloud was unavailable. Used the local parser instead."));
+    // 401 (invalid/expired) and 402 (no spending limit / no credits) both fall back silently.
+    if (response.status === 401 || response.status === 402 || !response.ok) {
+      return Response.json(local(message, "Used the local parser."));
     }
     const payload = await response.json();
     const content = payload?.choices?.[0]?.message?.content;

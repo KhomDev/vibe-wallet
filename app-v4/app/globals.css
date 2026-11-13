@@ -358,9 +358,35 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: #2c2a2e; color: #fffdfb; }
-.btn-danger { background: #e7a0a6; color: #3b2224; }
-.btn-ghost { background: transparent; border-color: rgba(255, 255, 255, 0.8); }
+.btn-primary,
+a.btn-primary:link,
+a.btn-primary:visited,
+a.btn-primary:hover,
+a.btn-primary:active,
+a.btn-primary:focus {
+  background: #2c2a2e;
+  color: #fffdfb;
+  text-decoration: none;
+}
+.btn-danger,
+a.btn-danger:link,
+a.btn-danger:visited,
+a.btn-danger:hover,
+a.btn-danger:active,
+a.btn-danger:focus {
+  background: #e7a0a6;
+  color: #3b2224;
+  text-decoration: none;
+}
+.btn-ghost { background: transparent; border-color: rgba(255, 255, 255, 0.8); color: var(--vw-fg); }
+a.btn-ghost:link,
+a.btn-ghost:visited,
+a.btn-ghost:hover,
+a.btn-ghost:active,
+a.btn-ghost:focus {
+  color: var(--vw-fg);
+  text-decoration: none;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .btn { transition: transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1); }
@@ -507,16 +533,34 @@ button, input, textarea { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
-.lp-btn-primary {
+.lp-btn-primary,
+a.lp-btn-primary:link,
+a.lp-btn-primary:visited,
+a.lp-btn-primary:hover,
+a.lp-btn-primary:active,
+a.lp-btn-primary:focus {
   background: var(--vw-accent);
-  color: var(--vw-accent-fg);
+  color: #fffdfb;
   box-shadow: 0 12px 24px rgba(44, 42, 46, 0.16);
+  text-decoration: none;
 }
 
-.lp-btn-ghost {
-  background: rgba(255, 255, 255, 0.62);
+a.lp-btn-primary:hover,
+a.lp-btn-primary:focus-visible {
+  background: #1a191c;
+  color: #fffdfb;
+}
+
+.lp-btn-ghost,
+a.lp-btn-ghost:link,
+a.lp-btn-ghost:visited,
+a.lp-btn-ghost:hover,
+a.lp-btn-ghost:active,
+a.lp-btn-ghost:focus {
+  background: rgba(255, 255, 255, 0.72);
   color: var(--vw-fg);
   border: 1px solid var(--vw-border);
+  text-decoration: none;
 }
 
 .lp-qr-row {
@@ -635,7 +679,10 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .lp-guide h3 { margin: 0 0 12px; letter-spacing: -0.03em; }
 .lp-guide ol { margin: 0 0 20px; padding-left: 1.2rem; display: grid; gap: 10px; line-height: 1.45; }
-.lp-guide a { color: inherit; }
+.lp-guide a:not(.lp-btn) { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.lp-guide a:not(.lp-btn):hover,
+.lp-guide a:not(.lp-btn):focus-visible { color: var(--vw-fg); }
+
 
 .lp-foot {
   max-width: 1120px;

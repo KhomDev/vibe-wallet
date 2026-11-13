@@ -8,7 +8,6 @@ Android APK: [https://vibe-wallet-flame.vercel.app/download/vibe-wallet.apk](htt
 
 Demo video: [`/workspace/vibe-wallet/demo/vibe-wallet-demo.mp4`](../demo/vibe-wallet-demo.mp4)
 
-Other NEAR Hackathon entry by the same author: TBD (one person may enter at most two projects; this README will name the other entry before official submission).
 
 The network in this build is **NEAR testnet only**. Testnet NEAR has no monetary value. This app never sends or signs on mainnet.
 

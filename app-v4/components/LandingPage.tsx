@@ -50,15 +50,15 @@ export function LandingPage() {
           <p className="lp-kicker">Personal voice wallet · NEAR testnet</p>
           <h1>{APP_NAME}</h1>
           <p className="lp-lead">
-            Talk to the orb. Confirm with a slide. A wallet you control by voice, with limits and a kill switch still in your hands.
+            Talk to the orb, then slide to confirm a real NEAR testnet payment. Limits, an allowlist, and a kill switch stay in your hands. Try the shared demo — no wallet setup needed.
           </p>
           <div className="lp-actions">
-            <a className="lp-btn lp-btn-primary" href={APK_PATH}>
+            <Link className="lp-btn lp-btn-primary" href="/?app=1&demo=1">
+              Try a demo account
+            </Link>
+            <a className="lp-btn lp-btn-ghost" href={APK_PATH}>
               Download APK
             </a>
-            <Link className="lp-btn lp-btn-ghost" href="/?app=1">
-              Open web app on desktop
-            </Link>
           </div>
           <div className="lp-qr-row">
             <img className="lp-qr" src="/qr/vibe-wallet.png" alt={`QR code that opens ${SITE_URL}`} width={148} height={148} />

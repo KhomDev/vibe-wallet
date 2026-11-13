@@ -168,6 +168,13 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
     }
   }
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("demo") === "1") {
+      void tryDemo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- start the shared demo once when deep-linked from the landing
+  }, []);
+
   if (!booted) {
     return <Stage><div className="grid h-full place-items-center"><HoloOrb state="thinking" levelRef={levelRef} onPress={() => undefined} /></div></Stage>;
   }

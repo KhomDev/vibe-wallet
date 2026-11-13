@@ -17,7 +17,11 @@ const eslintConfig = [
       ".next/**",
       "out/**",
       "build/**",
+      "android/**",
+      "cap-www/**",
       "next-env.d.ts",
+      "playwright-report/**",
+      "test-results/**",
     ],
   },
 ];

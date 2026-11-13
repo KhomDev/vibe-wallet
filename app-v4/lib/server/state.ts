@@ -42,6 +42,56 @@ function tmpPath(): string {
 }
 
 const BLOB_PATH = "vibe-wallet/agent-state.json";
+const SOCIAL_CONTRACT = "v1.social08.testnet";
+const SOCIAL_KEY = "vibewallet";
+
+function extractSocial(raw: unknown, accountId: string): AgentState | null {
+  if (raw == null) return null;
+  let value: unknown = raw;
+  if (typeof raw === "string") {
+    try { value = JSON.parse(raw); } catch { return null; }
+  }
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  if (!record) return null;
+  const account = record[accountId];
+  const branch = account && typeof account === "object" ? (account as Record<string, unknown>)[SOCIAL_KEY] : null;
+  const agent = branch && typeof branch === "object" ? (branch as Record<string, unknown>).agent : branch;
+  const text = typeof agent === "string" ? agent : agent ? JSON.stringify(agent) : null;
+  if (!text) return null;
+  try { return normalize(JSON.parse(text)); } catch { return null; }
+}
+
+async function readSocial(): Promise<AgentState | null> {
+  try {
+    const { getDemoSecrets } = await import("./env");
+    const { getProvider } = await import("../near/read");
+    const secrets = getDemoSecrets();
+    const raw = await getProvider().callFunction({
+      contractId: SOCIAL_CONTRACT,
+      method: "get",
+      args: { keys: [`${secrets.accountId}/${SOCIAL_KEY}/agent`] },
+    });
+    return extractSocial(raw, secrets.accountId);
+  } catch {
+    return null;
+  }
+}
+
+async function writeSocial(state: AgentState): Promise<void> {
+  const { getDemoSecrets } = await import("./env");
+  const { Account, actions } = await import("near-api-js");
+  const { asSecret, getProvider } = await import("../near/read");
+  const { parseNear } = await import("../units");
+  const secrets = getDemoSecrets();
+  const account = new Account(secrets.accountId, getProvider(), asSecret(secrets.secretKey));
+  const data = { [secrets.accountId]: { [SOCIAL_KEY]: { agent: JSON.stringify(state) } } };
+  await account.signAndSendTransaction({
+    receiverId: SOCIAL_CONTRACT,
+    actions: [actions.functionCall("set", { data }, 40_000_000_000_000n, parseNear("0.01"))],
+    waitUntil: "EXECUTED",
+  });
+}
+
 
 type BlobSnapshot = { state: AgentState; etag?: string };
 
@@ -134,6 +184,11 @@ let memory: AgentState | null = null;
 let memoryEtag: string | undefined;
 
 export async function loadState(): Promise<AgentState> {
+  const fromSocial = await readSocial();
+  if (fromSocial) {
+    memory = fromSocial;
+    return structuredClone(fromSocial);
+  }
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     const result = await readBlob();
     if (result.error) throw new Error(`Could not read durable agent state: ${result.error}`);
@@ -155,9 +210,23 @@ export async function loadState(): Promise<AgentState> {
 
 export async function saveState(state: AgentState): Promise<AgentState> {
   const next = { ...state, logs: state.logs.slice(-80), updatedAt: new Date().toISOString() };
+  let socialOk = false;
+  try {
+    await writeSocial(next);
+    memory = next;
+    socialOk = true;
+  } catch (err) {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+  }
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     const wrote = await writeBlob(next, memoryEtag);
-    if (!wrote.ok && wrote.conflict) {
+    if (wrote.ok) {
+      memory = next;
+      memoryEtag = wrote.etag;
+      return next;
+    }
+    if (socialOk) return next;
+    if (wrote.conflict) {
       const latest = await readBlob();
       if (latest.snapshot) {
         memory = latest.snapshot.state;
@@ -165,10 +234,7 @@ export async function saveState(state: AgentState): Promise<AgentState> {
       }
       throw new Error("concurrently updated");
     }
-    if (!wrote.ok) throw new Error(`Could not persist agent state: ${wrote.error}`);
-    memory = next;
-    memoryEtag = wrote.etag;
-    return next;
+    throw new Error(`Could not persist agent state: ${wrote.error}`);
   }
   memory = next;
   try { writeFile(filePath(), next); } catch { /* may be read-only on serverless */ }

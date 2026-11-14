@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { explainTransaction, type HistoryItem } from "../lib/history";
 import { parseNear } from "../lib/units";
@@ -43,8 +44,8 @@ test("server routes do not import the signer or print secret keys", () => {
       else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) files.push(path);
     }
   }
-  walk(new URL("app/api", root).pathname);
-  walk(new URL("lib/server", root).pathname);
+  walk(fileURLToPath(new URL("app/api", root)));
+  walk(fileURLToPath(new URL("lib/server", root)));
   for (const file of files) {
     const source = readFileSync(file, "utf8");
     assert.doesNotMatch(source, /from ["'][^"']*near\/signer["']/, `import signer in ${file}`);

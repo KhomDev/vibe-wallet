@@ -49,7 +49,7 @@ export function defaultStoredPolicy(): StoredPolicy {
 
 export function toPolicy(stored: StoredPolicy): Policy {
   const phrase = stored.confirmPhrase.trim();
-  if (phrase.length < 4) throw new Error("The confirm phrase needs at least 4 characters.");
+  if (!validPhrase(phrase)) throw new Error("The confirm phrase needs at least 4 letters or digits.");
   return {
     perTxYocto: parseNear(stored.perTxNear),
     dailyYocto: parseNear(stored.dailyNear),
@@ -61,13 +61,23 @@ export function toPolicy(stored: StoredPolicy): Policy {
   };
 }
 
+/**
+ * Case-, punctuation- and spacing-insensitive form of a phrase. Letters and digits of every script
+ * are kept, so "密码密码" stays a 4-character phrase instead of collapsing to "".
+ */
 export function normalizePhrase(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
 }
 
-export function phraseMatches(policy: Policy, phrase: string | null): boolean {
+/** A phrase counts only if at least 4 letters or digits survive normalization. */
+export function validPhrase(value: string): boolean {
+  return normalizePhrase(value).replace(/\s/g, "").length >= 4;
+}
+
+export function phraseMatches(policy: Pick<Policy, "confirmPhrase">, phrase: string | null): boolean {
   if (!phrase) return false;
-  return normalizePhrase(phrase) === normalizePhrase(policy.confirmPhrase);
+  const expected = normalizePhrase(policy.confirmPhrase);
+  return expected.length > 0 && normalizePhrase(phrase) === expected;
 }
 
 function levenshtein(left: string, right: string): number {
@@ -132,10 +142,10 @@ export function assessSend(policy: Policy, facts: SendFacts, ownAccountId?: stri
     warnings.push("This is most of your available balance.");
     phraseReasons.push("The amount is most of your available balance.");
   }
-  // Allowlisted recipients within the per-send and daily caps skip the typed
-  // phrase: the slide alone confirms. Everyone else needs it at the threshold.
-  if (!allowlisted && facts.amountYocto >= policy.thresholdYocto) {
-    phraseReasons.push(`The amount is at or above your threshold of ${formatNear(policy.thresholdYocto)} NEAR.`);
+  // The threshold applies to every recipient: allowlisted sends below it need only the slide; at
+  // or above it they also need the phrase. A recipient that is not allowlisted always needs it.
+  if (facts.amountYocto >= policy.thresholdYocto) {
+    phraseReasons.push(`The amount is at or above your extra-confirm threshold of ${formatNear(policy.thresholdYocto)} NEAR.`);
   }
 
   const needsPhrase = phraseReasons.length > 0;

@@ -13,6 +13,7 @@ import {
 } from "../config";
 import { assessSend, phraseMatches, type Policy } from "../policy";
 import { parseNear } from "../units";
+import { SendError, signAndBroadcast } from "./broadcast";
 import {
   accountExists,
   asSecret,
@@ -24,33 +25,31 @@ import {
   type BalanceView,
 } from "./read";
 
-type TxResult = {
-  status: unknown;
-  transaction: { hash: string };
-  transaction_outcome: { id: string; outcome: { tokens_burnt: string | number } };
-  receipts_outcome?: { outcome: { tokens_burnt: string | number } }[];
-};
-
 export type SignedTx = {
   hash: string;
   feeYocto: bigint;
   success: boolean;
+  /** True when the send call failed but the hash was found on chain afterwards. */
+  reconciled: boolean;
 };
 
-function txHash(result: TxResult): string {
-  return result.transaction?.hash || result.transaction_outcome.id;
-}
+export { SendError };
 
-function txFee(result: TxResult): bigint {
-  const rows = [result.transaction_outcome, ...(result.receipts_outcome ?? [])];
-  return rows.reduce((sum, row) => sum + BigInt(row.outcome.tokens_burnt), 0n);
-}
+const tabLocks = new Map<string, Promise<unknown>>();
 
-function assertSuccess(result: TxResult): void {
-  const status = result.status;
-  if (status && typeof status === "object" && "Failure" in status) {
-    throw new Error(`The transaction was rejected: ${JSON.stringify(status).slice(0, 240)}`);
-  }
+/**
+ * Runs one signing operation per account at a time: across tabs with the Web Locks API when the
+ * browser has it, and always within this tab. Two sends can no longer read the same access-key
+ * nonce and race each other.
+ */
+export async function withAccountLock<T>(accountId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = tabLocks.get(accountId) ?? Promise.resolve();
+  const run: Promise<T> = previous.catch(() => undefined).then(async (): Promise<T> => {
+    const locks = typeof navigator !== "undefined" ? (navigator as Navigator & { locks?: { request: (name: string, cb: () => Promise<T>) => Promise<T> } }).locks : undefined;
+    return locks ? await locks.request(`vibe-wallet-sign:${accountId}`, fn) : await fn();
+  });
+  tabLocks.set(accountId, run.catch(() => undefined));
+  return run;
 }
 
 function assertExpectedKey(secretKey: string, expectedPublicKey: string): KeyPairString {
@@ -68,24 +67,21 @@ export async function addScopedKey(input: {
   expectedPublicKey: string;
 }): Promise<{ agentSecret: string; agentPublicKey: string; hash: string }> {
   const secret = assertExpectedKey(input.fullSecret, input.expectedPublicKey);
-  await assertFullAccessKey(input.accountId, input.expectedPublicKey);
-  const agent = KeyPair.fromRandom("ed25519");
-  const agentPublicKey = agent.getPublicKey().toString();
-  const account = new Account(input.accountId, getProvider(), secret);
-  const result = await account.signAndSendTransaction({
-    receiverId: input.accountId,
-    actions: [
+  return withAccountLock(input.accountId, async () => {
+    await assertFullAccessKey(input.accountId, input.expectedPublicKey);
+    const agent = KeyPair.fromRandom("ed25519");
+    const agentPublicKey = agent.getPublicKey().toString();
+    const account = new Account(input.accountId, getProvider(), secret);
+    const sent = await signAndBroadcast(account, input.accountId, [
       actions.addFunctionCallAccessKey(
         PublicKey.fromString(agentPublicKey),
         SCOPED_CONTRACT_ID,
         [...SCOPED_METHODS],
         parseNear(SCOPED_ALLOWANCE_NEAR),
       ),
-    ],
-    waitUntil: "EXECUTED",
-  }) as unknown as TxResult;
-  assertSuccess(result);
-  return { agentSecret: agent.toString(), agentPublicKey, hash: txHash(result) };
+    ]);
+    return { agentSecret: agent.toString(), agentPublicKey, hash: sent.hash };
+  });
 }
 
 export async function executeScopedCall(input: {
@@ -106,13 +102,10 @@ export async function executeScopedCall(input: {
     throw new Error("Signer refused: this key is not limited to the expected contract method.");
   }
   const account = new Account(input.accountId, getProvider(), secret);
-  const result = await account.signAndSendTransaction({
-    receiverId: SCOPED_CONTRACT_ID,
-    actions: [actions.functionCall(SCOPED_CALL_METHOD, { account_id: input.accountId }, 20_000_000_000_000n, 0n)],
-    waitUntil: "EXECUTED",
-  }) as unknown as TxResult;
-  assertSuccess(result);
-  return { hash: txHash(result), feeYocto: txFee(result), success: true };
+  const sent = await withAccountLock(input.accountId, () => signAndBroadcast(account, SCOPED_CONTRACT_ID, [
+    actions.functionCall(SCOPED_CALL_METHOD, { account_id: input.accountId }, 20_000_000_000_000n, 0n),
+  ]));
+  return { hash: sent.hash, feeYocto: sent.feeYocto, success: true, reconciled: sent.reconciled };
 }
 
 export async function executeTransfer(input: {
@@ -125,35 +118,38 @@ export async function executeTransfer(input: {
   spentTodayYocto: bigint;
   userConfirmed: boolean;
   confirmationPhrase: string | null;
+  /** Called after every check passed, right before the transaction is signed and sent. */
+  onBeforeBroadcast?: () => void;
 }): Promise<SignedTx & { balance: BalanceView | null }> {
-  if (!input.userConfirmed) throw new Error("Signer refused: the send was not confirmed.");
-  if (input.policy.killed) throw new Error("The kill switch is on. Sending is stopped.");
+  const refuse = (message: string): never => {
+    throw new SendError(message, false, "not-sent");
+  };
+  if (!input.userConfirmed) refuse("Signer refused: the send was not confirmed.");
+  if (input.policy.killed) refuse("The kill switch is on. Sending is stopped.");
   const secret = assertExpectedKey(input.fullSecret, input.expectedPublicKey);
+  return withAccountLock(input.accountId, async () => {
   await assertFullAccessKey(input.accountId, input.expectedPublicKey);
   const [balance, exists, feeYocto] = await Promise.all([
     readBalance(input.accountId),
     accountExists(input.recipient),
     estimateTransferFee(input.recipient === input.accountId),
   ]);
-  if (!balance) throw new Error(`Your account is not visible on ${NETWORK_ID}.`);
+  if (!balance) refuse(`Your account is not visible on ${NETWORK_ID}.`);
   const check = assessSend(input.policy, {
     recipient: input.recipient,
     amountYocto: input.amountYocto,
     feeYocto,
-    availableYocto: BigInt(balance.availableYocto),
+    availableYocto: BigInt(balance!.availableYocto),
     spentTodayYocto: input.spentTodayYocto,
     accountExists: exists,
   }, input.accountId);
-  if (check.blockReason) throw new Error(check.blockReason);
+  if (check.blockReason) refuse(check.blockReason);
   if (check.needsPhrase && !phraseMatches(input.policy, input.confirmationPhrase)) {
-    throw new Error("Signer refused: this send needs the confirm phrase as well as a click.");
+    refuse("Signer refused: this send needs the confirm phrase as well as the slide.");
   }
   const account = new Account(input.accountId, getProvider(), secret);
-  const result = await account.signAndSendTransaction({
-    receiverId: input.recipient,
-    actions: [actions.transfer(input.amountYocto)],
-    waitUntil: "EXECUTED",
-  }) as unknown as TxResult;
-  assertSuccess(result);
-  return { hash: txHash(result), feeYocto: txFee(result), success: true, balance };
+  input.onBeforeBroadcast?.();
+  const sent = await signAndBroadcast(account, input.recipient, [actions.transfer(input.amountYocto)]);
+  return { hash: sent.hash, feeYocto: sent.feeYocto, success: true, reconciled: sent.reconciled, balance };
+  });
 }

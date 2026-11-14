@@ -2,11 +2,15 @@ import { QUOTE_ASSETS, QUOTE_ONLY_LABEL, type QuoteSymbol } from "@/lib/assets";
 import { INTENTS_API_URL } from "@/lib/config";
 import { isValidAccountId, normalizeAccountId } from "@/lib/account-id";
 import { formatUnits, parseUnits } from "@/lib/units";
+import { clientIp } from "@/lib/server/env";
+import { hit, ROUTE_LIMITS, tooMany } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
+  const limited = hit(`quote:${clientIp(request)}`, ROUTE_LIMITS.quote);
+  if (!limited.ok) return tooMany(limited.retryAfterSec);
   let body: { accountId?: unknown; amountNear?: unknown; toSymbol?: unknown };
   try {
     body = await request.json();

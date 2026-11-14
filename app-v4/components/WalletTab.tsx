@@ -34,16 +34,21 @@ export function WalletTab({
   hasAgentKey,
   busy,
   onPolicy,
+  onAllow,
+  onRemoveAllow,
   onKill,
   onResume,
   onRefreshKeys,
   onScopedCall,
+  onAddScopedKey,
+  hasScopedKeyOnChain,
   onForget,
   onLock,
   otherAccount,
   onCreateRecipient,
   onSwitch,
   demo,
+  globalKilled,
   agentSlot,
 }: {
   accountId: string;
@@ -62,16 +67,21 @@ export function WalletTab({
   hasAgentKey: boolean;
   busy: boolean;
   onPolicy: (policy: StoredPolicy) => void;
+  onAllow: (accountId: string) => void;
+  onRemoveAllow: (accountId: string) => void;
   onKill: () => void;
   onResume: () => void;
   onRefreshKeys: () => void;
   onScopedCall: () => void;
+  onAddScopedKey: () => void;
+  hasScopedKeyOnChain: boolean;
   onForget: () => void;
   onLock: () => void;
   otherAccount: string | null;
   onCreateRecipient: () => void;
   onSwitch: () => void;
   demo?: boolean;
+  globalKilled?: boolean;
   agentSlot?: ReactNode;
 }) {
   const [tokens, setTokens] = useState<{ symbol: string; subtitle: string; amount: string; mark: string }[]>(
@@ -164,15 +174,17 @@ export function WalletTab({
           </ul>
         )}
       </section>
-      <section className="glass grid gap-2">
-        <h2 className="text-lg font-semibold">This account</h2>
-        {otherAccount ? (
-          <button className="btn btn-ghost" type="button" onClick={onSwitch}>Switch to {otherAccount}</button>
-        ) : (
-          <button className="btn btn-ghost" type="button" disabled={busy} onClick={onCreateRecipient}>Create a recipient account</button>
-        )}
-        <button className="btn btn-ghost" type="button" onClick={onLock}>Lock</button>
-      </section>
+      {demo ? null : (
+        <section className="glass grid gap-2">
+          <h2 className="text-lg font-semibold">This account</h2>
+          {otherAccount ? (
+            <button className="btn btn-ghost" type="button" onClick={onSwitch}>Switch to {otherAccount}</button>
+          ) : (
+            <button className="btn btn-ghost" type="button" disabled={busy} onClick={onCreateRecipient}>Create a recipient account</button>
+          )}
+          <button className="btn btn-ghost" type="button" onClick={onLock}>Lock</button>
+        </section>
+      )}
       {agentSlot}
       <SafetyPanel
         demo={demo}
@@ -183,11 +195,16 @@ export function WalletTab({
         hasAgentKey={hasAgentKey}
         busy={busy}
         onChange={onPolicy}
+        onAllow={onAllow}
+        onRemoveAllow={onRemoveAllow}
         onKill={onKill}
         onResume={onResume}
         onRefreshKeys={onRefreshKeys}
         onScopedCall={onScopedCall}
+        onAddScopedKey={onAddScopedKey}
+        hasScopedKeyOnChain={hasScopedKeyOnChain}
         onForget={onForget}
+        globalKilled={globalKilled}
       />
     </div>
   );

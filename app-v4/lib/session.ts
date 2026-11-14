@@ -1,6 +1,6 @@
 import { publicKeyOf } from "./near/read";
 import type { AccountSlot, VaultRecord } from "./store";
-import { decryptSecret, encryptSecret } from "./vault";
+import { decryptSecret, encryptSecret, isLegacyBlob, vaultContext } from "./vault";
 
 export type Session = {
   accountId: string;
@@ -18,11 +18,13 @@ export function isDemoSession(session: Session | null | undefined): boolean {
 }
 
 export async function sessionFromSlot(slot: AccountSlot, passphrase: string): Promise<Session> {
-  const fullSecret = await decryptSecret(slot.full, passphrase);
+  const fullSecret = await decryptSecret(slot.full, passphrase, vaultContext(slot.accountId, slot.publicKey, "full"));
   if (publicKeyOf(fullSecret) !== slot.publicKey) {
     throw new Error("The stored key does not match this account.");
   }
-  const agentSecret = slot.agent ? await decryptSecret(slot.agent, passphrase) : null;
+  const agentSecret = slot.agent && slot.agentPublicKey
+    ? await decryptSecret(slot.agent, passphrase, vaultContext(slot.accountId, slot.agentPublicKey, "agent"))
+    : null;
   return {
     accountId: slot.accountId,
     fullPublicKey: slot.publicKey,
@@ -37,12 +39,37 @@ export async function sessionFromVault(vault: VaultRecord, passphrase: string): 
   return sessionFromSlot(vault.active, passphrase);
 }
 
-export async function slotFromSession(session: Session): Promise<AccountSlot> {
+/** True when a slot still uses the v1 vault format and should be re-encrypted. */
+export function slotNeedsUpgrade(slot: AccountSlot | null | undefined): boolean {
+  return Boolean(slot && (isLegacyBlob(slot.full) || (slot.agent && isLegacyBlob(slot.agent))));
+}
+
+export async function encryptSlot(input: {
+  accountId: string;
+  publicKey: string;
+  fullSecret: string;
+  agentPublicKey: string | null;
+  agentSecret: string | null;
+  passphrase: string;
+}): Promise<AccountSlot> {
   return {
+    accountId: input.accountId,
+    publicKey: input.publicKey,
+    full: await encryptSecret(input.fullSecret, input.passphrase, vaultContext(input.accountId, input.publicKey, "full")),
+    agentPublicKey: input.agentPublicKey,
+    agent: input.agentSecret && input.agentPublicKey
+      ? await encryptSecret(input.agentSecret, input.passphrase, vaultContext(input.accountId, input.agentPublicKey, "agent"))
+      : null,
+  };
+}
+
+export async function slotFromSession(session: Session): Promise<AccountSlot> {
+  return encryptSlot({
     accountId: session.accountId,
     publicKey: session.fullPublicKey,
-    full: await encryptSecret(session.fullSecret, session.passphrase),
+    fullSecret: session.fullSecret,
     agentPublicKey: session.agentPublicKey,
-    agent: session.agentSecret ? await encryptSecret(session.agentSecret, session.passphrase) : null,
-  };
+    agentSecret: session.agentSecret,
+    passphrase: session.passphrase,
+  });
 }

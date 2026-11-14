@@ -94,3 +94,9 @@ test("bare names get the network suffix so allowlist entries match sends", async
   assert.deepEqual(parseIntent("allow bob"), { type: "allow", recipient: "bob.testnet" });
   assert.deepEqual(parseIntent("send 0.2 near to bob"), { type: "send", amountNear: "0.2", recipient: "bob.testnet" });
 });
+
+test("a recurring request with the cadence first is a schedule, never an immediate send", () => {
+  assert.deepEqual(parseIntent("Every Friday send 0.1 NEAR to bob.testnet"), { type: "schedule_send", amountNear: "0.1", recipient: "bob.testnet", cadence: "weekly_friday" });
+  assert.deepEqual(parseIntent("Every day send 0.1 NEAR to bob.testnet"), { type: "schedule_send", amountNear: "0.1", recipient: "bob.testnet", cadence: "daily" });
+  assert.equal(parseIntent("each month pay 1 NEAR to bob.testnet").type, "unknown");
+});

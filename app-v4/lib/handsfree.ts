@@ -48,8 +48,25 @@ export function isLikelyHallucination(text: string): boolean {
   return !text.trim() || HALLUCINATION.test(text);
 }
 
-export const YES = /^\s*(?:yes|yeah|yep|yup|ya|yah|sure|do it|confirm|confirmed|send it|go|go ahead|ok(?:ay)?|absolutely|let's go|lets go)\b/i;
-export const NO = /^\s*(?:no|nope|nah|cancel|don't|do not|never mind|nevermind|wait)\b/i;
+/**
+ * Voice confirm answers. YES must be the whole utterance ("yes", "yes, do it", "confirm"), so
+ * "ok", "go to history" or "sure, not now" never send. NO is checked first and matches a negative
+ * anywhere in the answer.
+ */
+export const YES = /^\s*(?:yes|yeah|yep|yup|confirm|confirmed|send it|do it)(?:[\s,]+(?:please|send it|do it|confirm|confirmed))?[\s.!]*$/i;
+export const NO = /\b(?:no|nope|nah|cancel|don't|dont|do not|never ?mind|wait|stop|not)\b/i;
+
+export function isNegative(text: string): boolean {
+  return NO.test(text.replace(/[‘’]/g, "'"));
+}
+
+/** Whole-utterance yes, and nothing negative in it. */
+export function isAffirmative(text: string): boolean {
+  return !isNegative(text) && YES.test(text.trim());
+}
+
+/** How long a "say yes to confirm" prompt stays armed. */
+export const VOICE_CONFIRM_MS = 15_000;
 
 const FOLLOW_UP_MS = 8000;
 const SILENCE_MS = 1000;

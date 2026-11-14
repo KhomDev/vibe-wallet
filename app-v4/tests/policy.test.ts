@@ -46,10 +46,14 @@ test("missing named accounts are blocked and the confirm phrase is required at t
   assert.match(assessSend(policy, { ...base, accountExists: false }).blockReason ?? "", /does not exist/);
   const high = assessSend(policy, { ...base, recipient: "carol.testnet", amountYocto: parseNear("0.5") });
   assert.equal(high.needsPhrase, true);
-  // Allowlisted and within the caps: the slide alone confirms.
-  const trusted = assessSend({ ...policy, allowlist: ["bob.testnet"] }, { ...base, amountYocto: parseNear("0.5") });
+  // Allowlisted and below the extra-confirm threshold (0.5): the slide alone confirms.
+  const trusted = assessSend({ ...policy, allowlist: ["bob.testnet"] }, { ...base, amountYocto: parseNear("0.4") });
   assert.equal(trusted.needsPhrase, false);
   assert.equal(trusted.allowlisted, true);
+  // At or above the threshold the phrase is needed even for an allowlisted contact.
+  const trustedHigh = assessSend({ ...policy, allowlist: ["bob.testnet"] }, { ...base, amountYocto: parseNear("0.5") });
+  assert.equal(trustedHigh.needsPhrase, true);
+  assert.match(trustedHigh.phraseReasons.join(" "), /threshold/);
   assert.equal(phraseMatches(policy, "Confirm send!"), true);
   assert.equal(phraseMatches(policy, "send it"), false);
 });

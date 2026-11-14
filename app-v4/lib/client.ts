@@ -1,3 +1,4 @@
+import { NETWORK_ID, type NetworkId } from "./config";
 import { assertNoSecret } from "./errors";
 import { parseIntent, sanitizeIntent, type WalletIntent } from "./intent";
 
@@ -10,8 +11,9 @@ export type ResolvedIntent = {
 };
 
 export async function resolveIntent(message: string, accountId: string): Promise<ResolvedIntent> {
-  const payload = { message, accountId, network: "testnet" };
-  assertNoSecret(JSON.stringify(payload));
+  // A pasted key or seed phrase is stopped here, before it leaves the browser.
+  assertNoSecret(message);
+  const payload = { message, accountId, network: NETWORK_ID };
   try {
     const response = await fetch("/api/intent", {
       method: "POST",
@@ -60,9 +62,21 @@ export async function requestQuote(input: { accountId: string; amountNear: strin
 }
 
 
+export type DemoLimitsView = {
+  perTxNear: string;
+  visitorDailyNear: string;
+  visitorSendsPerHour: number;
+  visitorSendsPerDay: number;
+  networkDailyNear: string;
+  networkSendsPerHour: number;
+  networkSendsPerDay: number;
+  globalDailyNear: string;
+  globalSendsPerHour: number;
+};
+
 export type DemoSessionView = {
   mode: "demo";
-  network: "testnet";
+  network: NetworkId;
   accountId: string;
   publicKey: string | null;
   recipientId: string;
@@ -72,6 +86,9 @@ export type DemoSessionView = {
   policy: import("./policy").StoredPolicy;
   spentTodayNear: string;
   killed: boolean;
+  globalKilled: boolean;
+  stopped: boolean;
+  limits: DemoLimitsView;
   note: string;
 };
 
@@ -99,10 +116,13 @@ export async function previewDemoSend(input: { recipient: string; amountNear: st
     check: import("./policy").SendCheck;
     availableNear: string;
     confirmPhrase: string;
+    /** Required by the send; bound to this visitor, recipient and amount, valid 5 minutes. */
+    confirmToken: string | null;
+    confirmExpiresAt: number | null;
   };
 }
 
-export async function sendDemoTransfer(input: { recipient: string; amountNear: string; phrase: string }) {
+export async function sendDemoTransfer(input: { recipient: string; amountNear: string; phrase: string; confirmToken: string | null }) {
   const response = await fetch("/api/demo/send", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -110,15 +130,16 @@ export async function sendDemoTransfer(input: { recipient: string; amountNear: s
   });
   const json = await response.json();
   if (!response.ok) {
-    const error = new Error(json.error || "The demo send was blocked.") as Error & { blocked?: boolean; check?: import("./policy").SendCheck };
+    const error = new Error(json.error || "The demo send was blocked.") as Error & { blocked?: boolean; check?: import("./policy").SendCheck; needsPreview?: boolean };
     error.blocked = Boolean(json.blocked);
     error.check = json.check;
+    error.needsPreview = Boolean(json.needsPreview);
     throw error;
   }
   return json as { hash: string; feeNear: string; explorerUrl: string; recipient: string; amountNear: string; availableNear: string | null };
 }
 
-export async function updateDemoPolicy(input: { killed?: boolean; allow?: string; remove?: string }) {
+export async function updateDemoPolicy(input: { killed?: boolean; allow?: string; remove?: string; phrase?: string }) {
   const response = await fetch("/api/demo/policy", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -126,7 +147,7 @@ export async function updateDemoPolicy(input: { killed?: boolean; allow?: string
   });
   const json = await response.json();
   if (!response.ok) throw new Error(json.error || "Could not update the demo policy.");
-  return json as { policy: import("./policy").StoredPolicy; killed: boolean; spentTodayNear: string };
+  return json as { policy: import("./policy").StoredPolicy; killed: boolean; globalKilled: boolean; stopped: boolean; spentTodayNear: string };
 }
 
 export async function fetchAgentStatus() {
@@ -134,9 +155,9 @@ export async function fetchAgentStatus() {
   const json = await response.json();
   if (!response.ok) throw new Error(json.error || "Could not load the agent.");
   return json as {
-    accountId: string;
-    recipientId: string;
     killed: boolean;
+    globalKilled: boolean;
+    stopped: boolean;
     spentTodayNear: string;
     rules: import("./agent-types").AgentRule[];
     logs: import("./agent-types").AgentLog[];

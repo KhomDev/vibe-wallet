@@ -6,13 +6,20 @@
  *      checks, confirm flag, and full-access key check as the wallet).
  *   2. An executed NEAR Intents swap (NEAR -> USDC) via lib/server/intents-swap.ts.
  *
+ * This moves real NEAR. It refuses to run without --broadcast; for a check that signs nothing, use
+ * scripts/mainnet-check.ts.
+ *
  * Usage (keys come from the environment and are never printed):
  *   NEAR_NETWORK=mainnet MAINNET_ACCOUNT_ID=... MAINNET_PRIVATE_KEY=ed25519:... \
- *   PROOF_RECIPIENT=... npx tsx scripts/mainnet-proof.ts
+ *   PROOF_RECIPIENT=... npx tsx scripts/mainnet-proof.ts --broadcast [--skip-swap]
  */
 process.env.NEAR_NETWORK = "mainnet";
 
 async function main() {
+  if (!process.argv.includes("--broadcast")) {
+    throw new Error("This script sends real mainnet NEAR. Re-run with --broadcast, or use scripts/mainnet-check.ts for a check that signs nothing.");
+  }
+  const skipSwap = process.argv.includes("--skip-swap");
   const { NETWORK_ID, explorerTxUrl } = await import("../lib/config");
   const { publicKeyOf, readBalance } = await import("../lib/near/read");
   const { executeTransfer } = await import("../lib/near/signer");
@@ -44,7 +51,8 @@ async function main() {
     userConfirmed: true,
     confirmationPhrase: null,
   });
-  console.log(`SEND ${sendNear} NEAR -> ${recipient}: ${explorerTxUrl(send.hash)}`);
+  console.log(`SEND ${sendNear} NEAR -> ${recipient}: ${explorerTxUrl(send.hash)}${send.reconciled ? " (confirmed by hash lookup after a send timeout)" : ""}`);
+  if (skipSwap) return;
 
   const swap = await executeIntentsSwap({
     accountId,

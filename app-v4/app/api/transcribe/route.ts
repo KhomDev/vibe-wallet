@@ -1,4 +1,6 @@
 import { NEAR_AI_BASE_URL, NEAR_AI_STT_MODEL } from "@/lib/config";
+import { clientIp } from "@/lib/server/env";
+import { hit, ROUTE_LIMITS, tooMany } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +30,16 @@ export async function POST(request: Request): Promise<Response> {
   const apiKey = process.env.NEAR_AI_API_KEY;
   if (!apiKey) {
     return Response.json({ error: "Voice transcription is not configured. You can still type." }, { status: 503 });
+  }
+  // Each clip is a paid Whisper call: per-client and per-instance limits.
+  const ip = clientIp(request);
+  const mine = hit(`transcribe:${ip}`, ROUTE_LIMITS.transcribe);
+  if (!mine.ok) return tooMany(mine.retryAfterSec, "Too many voice clips from this network. Wait a moment, or type the command.");
+  const all = hit("transcribe:global", ROUTE_LIMITS.modelGlobal);
+  if (!all.ok) return tooMany(60, "Voice transcription is busy right now. Type the command instead.");
+  const declared = Number(request.headers.get("content-length") || "0");
+  if (declared > MAX_BYTES + 64 * 1024) {
+    return Response.json({ error: "That recording is too long. Try a shorter command." }, { status: 413 });
   }
 
   let form: FormData;

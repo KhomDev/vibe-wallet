@@ -4,20 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { suggestTestnetAccountId } from "@/lib/account-id";
 import { addAgentRule, previewDemoSend, requestQuote, resolveIntent, runAgentNow, sendDemoTransfer, updateDemoPolicy, fetchAgentStatus, type IntentSource, type QuoteView } from "@/lib/client";
 import type { AgentLog, AgentRule } from "@/lib/agent-types";
-import { explorerAccountUrl, explorerTxUrl } from "@/lib/config";
+import { explorerAccountUrl, explorerTxUrl, NETWORK_ID, SCOPED_CONTRACT_ID } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { explainTransaction, mergeHistory, type HistoryItem } from "@/lib/history";
 import type { WalletIntent } from "@/lib/intent";
-import { accountExists, createFundedAccount, estimateTransferFee, fetchHistory, isScopedKey, listKeys, readBalance, type BalanceView, type KeySummary } from "@/lib/near/read";
-import { addScopedKey, executeScopedCall, executeTransfer } from "@/lib/near/signer";
+import { accountExists, createFundedAccount, estimateTransferFee, fetchHistory, getProvider, isScopedKey, listKeys, readBalance, type BalanceView, type KeySummary } from "@/lib/near/read";
+import { addScopedKey, executeScopedCall, executeTransfer, SendError } from "@/lib/near/signer";
 import { assessSend, normalizePhrase, phraseMatches, toPolicy, type StoredPolicy } from "@/lib/policy";
-import { isDemoSession, sessionFromSlot, slotFromSession, type Session } from "@/lib/session";
-import { addSpend, clearVault, loadActivity, loadPolicy, loadSpend, rememberActivity, savePolicy, saveVault, type VaultRecord } from "@/lib/store";
+import { encryptSlot, isDemoSession, sessionFromSlot, slotFromSession, type Session } from "@/lib/session";
+import { addSpend, clearVault, loadActivity, loadPendingSend, loadPolicy, loadSpend, rememberActivity, savePendingSend, savePolicy, saveVault, type VaultRecord } from "@/lib/store";
 import { formatNear, parseNear } from "@/lib/units";
-import { encryptSecret } from "@/lib/vault";
 import { chime, haptic, pop, setSoundMuted, soundMuted } from "@/lib/sounds";
 import { speak, speakAsync, startVoiceInput, stopSpeaking, unlockSpeech, voiceInputSupported } from "@/lib/voice";
-import { HandsFree, NO, YES, type HandsFreeReply, type HandsFreeState } from "@/lib/handsfree";
+import { HandsFree, isAffirmative, isNegative, VOICE_CONFIRM_MS, type HandsFreeReply, type HandsFreeState } from "@/lib/handsfree";
 import { speakNumber, toSpeech } from "@/lib/speech-text";
 import { ActionCards, type Pending, type ReceiptView } from "./ActionCards";
 import { BubbleBurst } from "./BubbleBurst";
@@ -33,7 +32,8 @@ import { AllowlistCard } from "./AllowlistCard";
 
 type Turn = { id: string; role: "user" | "assistant"; text: string; source?: IntentSource; note?: string | null };
 
-const scopedStarts = new Set<string>();
+const AGENT_DEMO_ONLY = "the agent runs on the shared demo account only. open the demo to try scheduled payments and price rules.";
+const PENDING_SEND_MS = 15 * 60 * 1000;
 const EXAMPLES = [
   "What's my balance?",
   "Send 0.5 NEAR to bob.testnet",
@@ -76,6 +76,7 @@ export function WalletApp() {
   const [swapSymbol, setSwapSymbol] = useState<"USDT" | "USDC" | "ETH">("USDT");
   const [agentRules, setAgentRules] = useState<AgentRule[]>([]);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
+  const [globalKilled, setGlobalKilled] = useState(false);
   const busyRef = useRef(busy);
   const sessionRef = useRef(session);
   const vaultRef = useRef(vault);
@@ -87,7 +88,8 @@ export function WalletApp() {
   const sayRef = useRef<(text: string, source: IntentSource | null, note: string | null, speech?: string) => void>(() => {});
   const lastSpeechRef = useRef("");
   const convoRef = useRef<HandsFree | null>(null);
-  const voiceConfirmRef = useRef(false);
+  // A spoken "yes" confirms only the card it was asked about, and only for VOICE_CONFIRM_MS.
+  const voiceConfirmRef = useRef<{ card: Pending; until: number } | null>(null);
   const handleTextRef = useRef<(raw: string) => Promise<void>>(async () => {});
   const [convo, setConvo] = useState<HandsFreeState>("off");
   const [wakeWord, setWakeWord] = useState(true);
@@ -139,9 +141,12 @@ export function WalletApp() {
           if (agent && !cancelled) {
             setAgentRules(agent.rules);
             setAgentLogs(agent.logs);
+            setGlobalKilled(agent.globalKilled);
           }
         } else {
           setSpent(loadSpend(accountId));
+          const settled = await reconcilePendingSend(accountId);
+          if (settled && !cancelled) sayRef.current(settled, null, null);
         }
       } catch (err) {
         if (!cancelled) setError(publicError(err));
@@ -160,53 +165,65 @@ export function WalletApp() {
     );
   }, [session, balance]);
 
-  useEffect(() => {
-    if (!session || isDemoSession(session) || session.agentPublicKey) return;
-    const accountId = session.accountId;
-    if (scopedStarts.has(accountId)) return;
-    scopedStarts.add(accountId);
-    void (async () => {
-      try {
-        setBusy("Adding a function-call key that cannot transfer NEAR…");
-        const existingKeys = await listKeys(accountId);
-        const existing = existingKeys.find(isScopedKey);
-        const current = sessionRef.current;
-        if (!current || current.accountId !== accountId) return;
-        if (existing) {
-          await persistSession({ ...current, agentPublicKey: existing.publicKey });
-          setKeys(existingKeys);
-          return;
-        }
-        const added = await addScopedKey({
-          accountId,
-          fullSecret: current.fullSecret,
-          expectedPublicKey: current.fullPublicKey,
-        });
-        const latest = sessionRef.current;
-        if (!latest || latest.accountId !== accountId) return;
-        await persistSession({ ...latest, agentPublicKey: added.agentPublicKey, agentSecret: added.agentSecret });
-        setKeys(await listKeys(accountId));
-        rememberLocal({
-          hash: added.hash,
-          signer: accountId,
-          receiver: accountId,
-          actions: ["ADD_KEY"],
-          methods: [],
-          depositYocto: null,
-          feeYocto: null,
-          success: true,
-          timestampMs: Date.now(),
-          source: "local",
-        });
-        sayRef.current(`Scoped key added. Transaction ${added.hash}.`, null, null);
-      } catch (err) {
-        scopedStarts.delete(accountId);
-        setError(publicError(err));
-      } finally {
-        setBusy(null);
+  // Re-checks a send whose outcome was unknown (timeout after broadcast). Returns a message once it settles.
+  async function reconcilePendingSend(accountId: string): Promise<string | null> {
+    const entry = loadPendingSend(accountId);
+    if (!entry) return null;
+    try {
+      const found = await getProvider().viewTransactionStatus({ txHash: entry.hash, accountId, waitUntil: "EXECUTED" }) as unknown as { status?: unknown };
+      savePendingSend(accountId, null);
+      const failed = Boolean(found.status && typeof found.status === "object" && "Failure" in found.status);
+      if (failed) addSpend(accountId, -BigInt(entry.amountYocto));
+      setSpent(loadSpend(accountId));
+      return failed ? `your earlier send to ${entry.recipient} failed on chain, nothing moved.` : `your earlier send to ${entry.recipient} went through.`;
+    } catch {
+      if (Date.now() - entry.at > PENDING_SEND_MS) {
+        savePendingSend(accountId, null);
+        return null;
       }
-    })();
-  }, [session]);
+      return null;
+    }
+  }
+
+  async function addScopedKeyNow() {
+    const current = sessionRef.current;
+    if (!current || isDemoSession(current)) return;
+    setBusy("Adding a function-call key that cannot transfer NEAR…");
+    try {
+      const existingKeys = await listKeys(current.accountId);
+      const existing = existingKeys.find(isScopedKey);
+      if (existing) {
+        await persistSession({ ...current, agentPublicKey: existing.publicKey });
+        setKeys(existingKeys);
+        say("a scoped key is already on this account.", null, null);
+        return;
+      }
+      const added = await addScopedKey({
+        accountId: current.accountId,
+        fullSecret: current.fullSecret,
+        expectedPublicKey: current.fullPublicKey,
+      });
+      const latest = sessionRef.current;
+      if (!latest || latest.accountId !== current.accountId) return;
+      await persistSession({ ...latest, agentPublicKey: added.agentPublicKey, agentSecret: added.agentSecret });
+      setKeys(await listKeys(current.accountId));
+      rememberLocal({
+        hash: added.hash,
+        signer: current.accountId,
+        receiver: current.accountId,
+        actions: ["ADD_KEY"],
+        methods: [],
+        depositYocto: null,
+        feeYocto: null,
+        success: true,
+        timestampMs: Date.now(),
+        source: "local",
+      });
+      say(`Scoped key added. Transaction ${added.hash}.`, null, null);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function persistSession(next: Session) {
     const currentVault = vaultRef.current;
@@ -218,17 +235,26 @@ export function WalletApp() {
     setSession(next);
   }
 
-  function commitPolicy(next: StoredPolicy) {
-    policyRef.current = next;
-    setPolicy(next);
+  function commitPolicy(next: StoredPolicy, confirmPhrase?: string) {
     const current = sessionRef.current;
     if (isDemoSession(current)) {
-      void updateDemoPolicy({ killed: next.killed }).then((view) => {
+      // Demo: only this visitor's own stop switch changes. Resuming needs the phrase on the server too.
+      const previous = policyRef.current;
+      policyRef.current = next;
+      setPolicy(next);
+      void updateDemoPolicy({ killed: next.killed, phrase: confirmPhrase }).then((view) => {
         policyRef.current = view.policy;
         setPolicy(view.policy);
-      }).catch((err) => setError(publicError(err)));
+        setGlobalKilled(view.globalKilled);
+      }).catch((err) => {
+        policyRef.current = previous;
+        setPolicy(previous);
+        setError(publicError(err));
+      });
       return;
     }
+    policyRef.current = next;
+    setPolicy(next);
     savePolicy(next);
   }
 
@@ -356,6 +382,10 @@ export function WalletApp() {
       return;
     }
     if (intent.type === "resume") {
+      if (isDemoSession(current) && globalKilled) {
+        say("the operator paused the whole demo, so sending can't be turned back on from here.", nextSource, nextNote);
+        return;
+      }
       setPending({ kind: "resume" });
       setPhrase("");
       say("type your confirm phrase to turn sending back on.", nextSource, nextNote);
@@ -373,7 +403,15 @@ export function WalletApp() {
       say("drafted new limits, type the phrase to lock them in.", nextSource, nextNote);
       return;
     }
+    if ((intent.type === "run_agent" || intent.type === "agent_status" || intent.type === "schedule_send" || intent.type === "price_rule") && !isDemoSession(current)) {
+      say(AGENT_DEMO_ONLY, nextSource, nextNote);
+      return;
+    }
     if (intent.type === "run_agent") {
+      if (policyRef.current.killed) {
+        say("sending is stopped, so the agent won't run. resume sending first.", nextSource, nextNote);
+        return;
+      }
       setBusy("Running the agent…");
       const result = await runAgentNow();
       setAgentRules(result.rules);
@@ -425,6 +463,7 @@ export function WalletApp() {
           feeNear: preview.feeNear,
           balanceAfterNear: preview.balanceAfterNear,
           check: preview.check,
+          confirmToken: preview.confirmToken,
         });
         setPhrase("");
         say(sendLine(preview.check, preview.amountNear, preview.recipient), nextSource, nextNote);
@@ -478,25 +517,13 @@ export function WalletApp() {
     }
   }
 
-  async function allowAndRetry(recipient: string, amountNear: string) {
-    const current = sessionRef.current;
-    if (!current) return;
+  // Adding a recipient always goes through the allow card, which needs the confirm phrase. After it
+  // is confirmed the send is drafted again for a fresh slide.
+  function allowAndRetry(recipient: string, amountNear: string) {
     setError(null);
-    setBusy("Adding to your allowlist…");
-    try {
-      if (isDemoSession(current)) {
-        const view = await updateDemoPolicy({ allow: recipient });
-        policyRef.current = view.policy;
-        setPolicy(view.policy);
-      } else {
-        commitPolicy({ ...policyRef.current, allowlist: [...new Set([...policyRef.current.allowlist, recipient])] });
-      }
-      await applyIntent({ type: "send", recipient, amountNear }, "local-fallback", null);
-    } catch (err) {
-      setError(publicError(err));
-    } finally {
-      setBusy(null);
-    }
+    setPending({ kind: "allow", recipient, retryAmountNear: amountNear });
+    setPhrase("");
+    say(`add ${recipient} to your allowlist? type the phrase, then I'll redraft the send.`, null, null);
   }
 
   async function confirmPending() {
@@ -505,7 +532,7 @@ export function WalletApp() {
     const stored = policyRef.current;
     if (!current || !card || busy) return;
     const parsed = toPolicy(stored);
-    if (card.kind !== "send" && card.kind !== "schedule" && card.kind !== "price") {
+    if (card.kind !== "send" && card.kind !== "schedule" && card.kind !== "price" && card.kind !== "scoped_key") {
       if (!phraseMatches(parsed, phrase)) {
         setError("Enter the confirm phrase exactly, then slide to confirm.");
         return;
@@ -519,14 +546,19 @@ export function WalletApp() {
     setError(null);
     try {
       if (card.kind === "resume") {
-        commitPolicy({ ...stored, killed: false });
+        commitPolicy({ ...stored, killed: false }, phrase);
         setPending(null);
         say("sending's back on ✅", null, null);
         return;
       }
+      if (card.kind === "scoped_key") {
+        setPending(null);
+        await addScopedKeyNow();
+        return;
+      }
       if (card.kind === "allow") {
         if (isDemoSession(current)) {
-          const view = await updateDemoPolicy({ allow: card.recipient });
+          const view = await updateDemoPolicy({ allow: card.recipient, phrase });
           policyRef.current = view.policy;
           setPolicy(view.policy);
         } else {
@@ -534,6 +566,7 @@ export function WalletApp() {
         }
         setPending(null);
         say(`${card.recipient} is on your allowlist now 👍`, null, null);
+        if (card.retryAmountNear) await applyIntent({ type: "send", recipient: card.recipient, amountNear: card.retryAmountNear }, "local-fallback", null);
         return;
       }
       if (card.kind === "limits") {
@@ -573,7 +606,7 @@ export function WalletApp() {
       if (card.check.blockReason) return;
       if (isDemoSession(current)) {
         setBusy("Sending from the server-held demo account on testnet…");
-        const result = await sendDemoTransfer({ recipient: card.recipient, amountNear: card.amountNear, phrase });
+        const result = await sendDemoTransfer({ recipient: card.recipient, amountNear: card.amountNear, phrase, confirmToken: card.confirmToken ?? null });
         setReceipt({ hash: result.hash, recipient: result.recipient, amountNear: result.amountNear, feeNear: result.feeNear });
         rememberLocal({
           hash: result.hash,
@@ -597,20 +630,46 @@ export function WalletApp() {
         say(`done, sent ${result.amountNear} to ${result.recipient} ✌️`, null, null);
         return;
       }
-      setBusy("Signing in this browser and sending to testnet…");
-      const result = await executeTransfer({
-        accountId: current.accountId,
-        fullSecret: current.fullSecret,
-        expectedPublicKey: current.fullPublicKey,
-        recipient: card.recipient,
-        amountYocto: BigInt(card.amountYocto),
-        policy: parsed,
-        spentTodayYocto: loadSpend(current.accountId),
-        userConfirmed: true,
-        confirmationPhrase: phrase,
-      });
-      const nextSpent = addSpend(current.accountId, BigInt(card.amountYocto));
-      setSpent(nextSpent);
+      const earlier = loadPendingSend(current.accountId);
+      if (earlier) {
+        const settled = await reconcilePendingSend(current.accountId);
+        if (settled) say(settled, null, null);
+        else if (loadPendingSend(current.accountId)) {
+          setError(`Your earlier send (${earlier.hash.slice(0, 8)}…) has not confirmed yet. Check your history before sending again.`);
+          return;
+        }
+      }
+      setBusy(`Signing in this browser and sending to ${NETWORK_ID}…`);
+      const amountYocto = BigInt(card.amountYocto);
+      let reserved = false;
+      let result;
+      try {
+        result = await executeTransfer({
+          accountId: current.accountId,
+          fullSecret: current.fullSecret,
+          expectedPublicKey: current.fullPublicKey,
+          recipient: card.recipient,
+          amountYocto,
+          policy: parsed,
+          spentTodayYocto: loadSpend(current.accountId),
+          userConfirmed: true,
+          confirmationPhrase: phrase,
+          // Count the spend before broadcasting; give it back only if the send certainly did not happen.
+          onBeforeBroadcast: () => {
+            addSpend(current.accountId, amountYocto);
+            reserved = true;
+          },
+        });
+      } catch (err) {
+        if (reserved && err instanceof SendError && err.outcome === "unknown" && err.hash) {
+          savePendingSend(current.accountId, { hash: err.hash, recipient: card.recipient, amountYocto: card.amountYocto, at: Date.now() });
+        } else if (reserved) {
+          addSpend(current.accountId, -amountYocto);
+        }
+        setSpent(loadSpend(current.accountId));
+        throw err;
+      }
+      setSpent(loadSpend(current.accountId));
       setReceipt({ hash: result.hash, recipient: card.recipient, amountNear: card.amountNear, feeNear: formatNear(result.feeYocto, 8) });
       rememberLocal({
         hash: result.hash,
@@ -679,19 +738,20 @@ export function WalletApp() {
         setInterim("");
         setTranscribing(false);
         const card = pendingRef.current;
-        const spoken = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-        const expected = policyRef.current.confirmPhrase.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-        if (/^(cancel|never mind|nevermind)$/.test(spoken)) {
+        const spoken = normalizePhrase(text);
+        const expected = normalizePhrase(policyRef.current.confirmPhrase);
+        if (/^(cancel|never mind|nevermind|no)$/.test(spoken)) {
           setPending(null);
           say("cool, cancelled. nothing signed.", null, null);
           return;
         }
-        if (card && expected && spoken.includes(expected)) {
+        // The whole utterance must be the phrase; a sentence that merely contains it does not count.
+        if (card && expected && spoken === expected) {
           setPhrase(policyRef.current.confirmPhrase);
           say("got the phrase, now slide it.", null, null);
           return;
         }
-        if (card?.kind === "send" && !card.check.needsPhrase && /^(yes|confirm|send it|do it)$/.test(spoken)) {
+        if (card?.kind === "send" && card.check.allowlisted && !card.check.needsPhrase && !card.check.blockReason && isAffirmative(text)) {
           void confirmRef.current();
           return;
         }
@@ -755,13 +815,14 @@ export function WalletApp() {
     setError(null);
     try {
       const created = await createFundedAccount(suggestTestnetAccountId());
-      const other = {
+      const other = await encryptSlot({
         accountId: created.accountId,
         publicKey: created.publicKey,
-        full: await encryptSecret(created.secretKey, current.passphrase),
+        fullSecret: created.secretKey,
         agentPublicKey: null,
-        agent: null,
-      };
+        agentSecret: null,
+        passphrase: current.passphrase,
+      });
       const nextVault = { ...currentVault, other };
       saveVault(nextVault);
       vaultRef.current = nextVault;
@@ -814,7 +875,7 @@ export function WalletApp() {
       rememberLocal({
         hash: result.hash,
         signer: current.accountId,
-        receiver: "wrap.testnet",
+        receiver: SCOPED_CONTRACT_ID,
         actions: ["FUNCTION_CALL"],
         methods: ["storage_balance_of"],
         depositYocto: "0",
@@ -846,33 +907,35 @@ export function WalletApp() {
   async function handsFreeCommand(text: string): Promise<HandsFreeReply> {
     setHeard(text);
     const card = pendingRef.current;
-    if (voiceConfirmRef.current && card?.kind === "send") {
-      if (YES.test(text)) {
-        voiceConfirmRef.current = false;
+    const armed = voiceConfirmRef.current;
+    voiceConfirmRef.current = null;
+    if (armed && card?.kind === "send" && armed.card === card && Date.now() < armed.until) {
+      // Negatives first: "sure, not now" cancels instead of sending.
+      if (isNegative(text)) {
+        pushTurn({ role: "user", text });
+        setPending(null);
+        return { speech: "cool, cancelled." };
+      }
+      if (isAffirmative(text)) {
         pushTurn({ role: "user", text });
         lastSpeechRef.current = "";
         await confirmRef.current();
         await settle();
         return { speech: lastSpeechRef.current || "hmm, that didn't go through." };
       }
-      if (NO.test(text)) {
-        voiceConfirmRef.current = false;
-        pushTurn({ role: "user", text });
-        setPending(null);
-        return { speech: "cool, cancelled." };
-      }
     }
-    voiceConfirmRef.current = false;
     lastSpeechRef.current = "";
     await handleTextRef.current(text);
     await settle();
     const next = pendingRef.current;
     if (next?.kind === "send" && !next.check.blockReason && !policyRef.current.killed) {
       if (next.check.allowlisted && !next.check.needsPhrase) {
-        voiceConfirmRef.current = true;
-        return { speech: `send ${speakNumber(next.amountNear)} to ${shortName(next.recipient)}? say yes to confirm.` };
+        voiceConfirmRef.current = { card: next, until: Date.now() + VOICE_CONFIRM_MS };
+        return { speech: `send ${speakNumber(next.amountNear)} NEAR to ${shortName(next.recipient)}? say yes to confirm, or no.` };
       }
-      return { speech: `${shortName(next.recipient)} isn't a trusted contact, so use the slide on screen for this one.` };
+      return { speech: next.check.allowlisted
+        ? "that's at or above your extra-confirm amount, so type the phrase and slide on screen."
+        : `${shortName(next.recipient)} isn't a trusted contact, so use the slide on screen for this one.` };
     }
     if (next && (next.kind === "schedule" || next.kind === "price")) {
       return { speech: "slide on screen to set that rule." };
@@ -898,7 +961,7 @@ export function WalletApp() {
       onEnd: () => {
         stopSpeaking();
         setConvo("off");
-        voiceConfirmRef.current = false;
+        voiceConfirmRef.current = null;
         convoRef.current = null;
       },
     });
@@ -908,6 +971,10 @@ export function WalletApp() {
   }
 
   useEffect(() => () => convoRef.current?.stop(), []);
+  // Any change to the pending card disarms a spoken "yes".
+  useEffect(() => {
+    if (voiceConfirmRef.current && voiceConfirmRef.current.card !== pending) voiceConfirmRef.current = null;
+  }, [pending]);
   handleRef.current = handleText;
 
   function forgetWallet() {
@@ -964,7 +1031,7 @@ export function WalletApp() {
     { label: "Send 0.1 NEAR to demo friend", text: sendExample },
     { label: "What's my balance?", text: "What's my balance?" },
     { label: "Who can I send to?", text: "Who can I send to?" },
-    { label: "Every Friday send 0.1 NEAR", text: `Every Friday send 0.1 NEAR to ${session.demoRecipient}` },
+    { label: "Every day send 0.1 NEAR", text: `Every day send 0.1 NEAR to ${session.demoRecipient}` },
   ] : [
     { label: sendExample, text: sendExample },
     { label: "Who can I send to?", text: "Who can I send to?" },
@@ -973,7 +1040,7 @@ export function WalletApp() {
   const available = balance ? Number(balance.availableNear) : 0;
   const lastReply = [...turns].reverse().find((turn) => turn.role === "assistant");
   const sendPending = pending?.kind === "send" ? pending : null;
-  const phraseOk = !sendPending?.check.needsPhrase || normalizePhrase(phrase) === normalizePhrase(policy.confirmPhrase);
+  const phraseOk = !sendPending?.check.needsPhrase || phraseMatches(policy, phrase);
   const showBalance = !sendPending && flash !== "done";
 
   return (
@@ -1057,8 +1124,8 @@ export function WalletApp() {
             ) : null}
             {sendPending?.check.needsPhrase ? (
               <label className="mt-3 grid gap-1 text-sm">
-                Type {policy.confirmPhrase}
-                <input className="field" data-testid="confirm-phrase" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
+                {demo ? `Type ${policy.confirmPhrase}` : "Type your confirm phrase (set in the Safety tab)"}
+                <input className="field" data-testid="confirm-phrase" type={demo ? "text" : "password"} value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
               </label>
             ) : null}
             {policy.killed ? <p className="banner banner-danger mt-2">Sending is stopped. Balance, history, and quotes still work.</p> : null}
@@ -1093,6 +1160,7 @@ export function WalletApp() {
                 receipt={null}
                 quote={null}
                 busy={Boolean(busy)}
+                showPhrase={demo}
                 onPhrase={setPhrase}
                 onConfirm={() => void confirmPending()}
                 onCancel={() => { setPending(null); say("cool, cancelled. nothing signed.", null, null); }}
@@ -1129,7 +1197,7 @@ export function WalletApp() {
           <WalletTab
             accountId={session.accountId}
             demo={demo}
-            agentSlot={
+            agentSlot={demo ? (
               <AgentPanel
                 rules={agentRules}
                 logs={agentLogs}
@@ -1143,7 +1211,12 @@ export function WalletApp() {
                   }).catch((err) => setError(publicError(err)));
                 }}
               />
-            }
+            ) : (
+              <section className="glass grid gap-2" data-testid="agent-demo-only">
+                <h2 className="text-lg font-semibold">Autonomous agent</h2>
+                <p className="text-sm text-muted">Scheduled payments and price rules run on the shared demo account, with the demo&apos;s limits. They are not available for a personal wallet in this build.</p>
+              </section>
+            )}
             availableNear={available}
             nearPrice={nearPrice}
             hidden={hidden}
@@ -1158,11 +1231,22 @@ export function WalletApp() {
             keys={keys}
             hasAgentKey={Boolean(session.agentSecret)}
             busy={Boolean(busy)}
-            onPolicy={commitPolicy}
+            onPolicy={(next) => commitPolicy(next)}
+            onAllow={(id) => { setPending({ kind: "allow", recipient: id }); setPhrase(""); setTab("orb"); }}
+            onRemoveAllow={(id) => {
+              if (demo) {
+                void updateDemoPolicy({ remove: id }).then((view) => { policyRef.current = view.policy; setPolicy(view.policy); }).catch((err) => setError(publicError(err)));
+              } else {
+                commitPolicy({ ...policy, allowlist: policy.allowlist.filter((item) => item !== id) });
+              }
+            }}
             onKill={() => { commitPolicy({ ...policy, killed: true }); say("kill switch on 🛑", null, null); }}
-            onResume={() => { setPending({ kind: "resume" }); setTab("orb"); }}
+            onResume={() => { setPending({ kind: "resume" }); setPhrase(""); setTab("orb"); }}
             onRefreshKeys={() => void listKeys(session.accountId).then(setKeys).catch((err) => setError(publicError(err)))}
             onScopedCall={() => void proveScopedKey()}
+            onAddScopedKey={() => { setPending({ kind: "scoped_key" }); setTab("orb"); }}
+            hasScopedKeyOnChain={keys.some(isScopedKey) || Boolean(session.agentPublicKey)}
+            globalKilled={globalKilled}
             onForget={forgetWallet}
             onLock={() => { stopMic(); stopSpeaking(); setSession(null); }}
             otherAccount={vault?.other?.accountId ?? null}
@@ -1202,7 +1286,7 @@ export function WalletApp() {
         <div className="slider-shell" data-testid="slide-confirm">
           <SlideConfirm
             disabled={(Boolean(sendPending) && !phraseOk) || Boolean(busy)}
-            hint={sendPending && !phraseOk ? `Type "${policy.confirmPhrase}" to unlock` : busy ? "Working…" : undefined}
+            hint={sendPending && !phraseOk ? (demo ? `Type "${policy.confirmPhrase}" to unlock` : "Type your confirm phrase to unlock") : busy ? "Working…" : undefined}
             onConfirm={() => void confirmPending()}
           />
         </div>

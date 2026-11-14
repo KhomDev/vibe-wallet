@@ -78,13 +78,34 @@ export function loadSpend(accountId: string): bigint {
   return BigInt(entry.yocto);
 }
 
+/** Adds (or, with a negative amount, gives back) today's spend. Never goes below zero. */
 export function addSpend(accountId: string, amountYocto: bigint): bigint {
   const all = readJson<Record<string, SpendEntry>>(SPEND_KEY) ?? {};
   const current = loadSpend(accountId);
-  const next = current + amountYocto;
+  const sum = current + amountYocto;
+  const next = sum > 0n ? sum : 0n;
   all[accountId] = { day: utcDay(), yocto: next.toString() };
   writeJson(SPEND_KEY, all);
   return next;
+}
+
+// A send whose outcome the browser could not confirm. While one exists for an account, the wallet
+// warns before another send, so a retry after a timeout does not pay twice without the user knowing.
+const PENDING_KEY = "vibe.pending.v1";
+
+export type PendingSend = { hash: string; recipient: string; amountYocto: string; at: number };
+
+export function loadPendingSend(accountId: string): PendingSend | null {
+  const all = readJson<Record<string, PendingSend>>(PENDING_KEY) ?? {};
+  const entry = all[accountId];
+  return entry && typeof entry.hash === "string" ? entry : null;
+}
+
+export function savePendingSend(accountId: string, entry: PendingSend | null): void {
+  const all = readJson<Record<string, PendingSend>>(PENDING_KEY) ?? {};
+  if (entry) all[accountId] = entry;
+  else delete all[accountId];
+  writeJson(PENDING_KEY, all);
 }
 
 export function loadActivity(accountId: string): HistoryItem[] {

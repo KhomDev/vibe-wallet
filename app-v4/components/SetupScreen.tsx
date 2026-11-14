@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { isValidAccountId, normalizeAccountId, normalizeNewTestnetName, suggestTestnetAccountId } from "@/lib/account-id";
 import { publicError } from "@/lib/errors";
-import { addScopedKey } from "@/lib/near/signer";
 import { asSecret, assertFullAccessKey, createFundedAccount, implicitAccountId, isScopedKey, listKeys, publicKeyOf, readBalance } from "@/lib/near/read";
 import { startDemoSession } from "@/lib/client";
-import { sessionFromVault, type Session } from "@/lib/session";
+import { encryptSlot, sessionFromSlot, sessionFromVault, slotNeedsUpgrade, type Session } from "@/lib/session";
 import type { StoredPolicy } from "@/lib/policy";
 import { clearVault, loadVault, saveVault, type AccountSlot, type VaultRecord } from "@/lib/store";
-import { encryptSecret } from "@/lib/vault";
+import { MIN_PASSPHRASE, passphraseProblem } from "@/lib/vault";
 import { Brand, Stage } from "./Chrome";
 import { HoloOrb } from "./HoloOrb";
 
@@ -42,7 +41,21 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
     setError(null);
     try {
       const session = await sessionFromVault(vault, passphrase);
-      onReady(session, vault);
+      let current = vault;
+      // Re-encrypt v1 blobs (120k PBKDF2, no AAD) in the v2 format now that we hold the passphrase.
+      if (slotNeedsUpgrade(vault.active) || slotNeedsUpgrade(vault.other)) {
+        setStatus("Upgrading this wallet's encryption…");
+        const active = await encryptSlot({ ...session, publicKey: session.fullPublicKey });
+        let other = vault.other;
+        if (other) {
+          const otherSession = await sessionFromSlot(other, passphrase);
+          other = await encryptSlot({ ...otherSession, publicKey: otherSession.fullPublicKey });
+        }
+        current = { ...vault, active, other };
+        saveVault(current);
+        setStatus(null);
+      }
+      onReady(session, current);
     } catch (err) {
       setError(publicError(err));
     } finally {
@@ -64,8 +77,9 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
   async function create(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    if (passphrase.length < 8) {
-      setError("Use a passphrase of at least 8 characters.");
+    const weak = passphraseProblem(passphrase);
+    if (weak) {
+      setError(weak);
       return;
     }
     if (passphrase !== confirm) {
@@ -78,13 +92,14 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
       setStatus(`Asking the testnet faucet for ${accountId}…`);
       const created = await createFundedAccount(accountId);
       setStatus("Encrypting the full-access key in this browser…");
-      const slot: AccountSlot = {
+      const slot: AccountSlot = await encryptSlot({
         accountId: created.accountId,
         publicKey: created.publicKey,
-        full: await encryptSecret(created.secretKey, passphrase),
+        fullSecret: created.secretKey,
         agentPublicKey: null,
-        agent: null,
-      };
+        agentSecret: null,
+        passphrase,
+      });
       const next: VaultRecord = { version: 1, active: slot, other: null, createdAt: new Date().toISOString() };
       saveVault(next);
       const session = await sessionFromVault(next, passphrase);
@@ -100,8 +115,9 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
   async function importAccount(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    if (passphrase.length < 8) {
-      setError("Use a passphrase of at least 8 characters.");
+    const weak = passphraseProblem(passphrase);
+    if (weak) {
+      setError(weak);
       return;
     }
     if (passphrase !== confirm) {
@@ -118,23 +134,18 @@ export function SetupScreen({ onReady, onDemo }: { onReady: (session: Session, v
       await assertFullAccessKey(resolved, publicKey);
       const balance = await readBalance(resolved);
       if (!balance) throw new Error("That account does not exist on testnet yet.");
+      // The scoped agent key is not added automatically: importing signs nothing. It can be added
+      // later from the Safety tab, which says that it signs one AddKey transaction.
       const keys = await listKeys(resolved);
       const scoped = keys.find(isScopedKey);
-      let agentPublicKey = scoped?.publicKey ?? null;
-      let agentSecret: string | null = null;
-      if (!scoped) {
-        setStatus("Adding a function-call key that cannot transfer NEAR…");
-        const added = await addScopedKey({ accountId: resolved, fullSecret: secretKey, expectedPublicKey: publicKey });
-        agentPublicKey = added.agentPublicKey;
-        agentSecret = added.agentSecret;
-      }
-      const slot: AccountSlot = {
+      const slot: AccountSlot = await encryptSlot({
         accountId: resolved,
         publicKey,
-        full: await encryptSecret(secretKey, passphrase),
-        agentPublicKey,
-        agent: agentSecret ? await encryptSecret(agentSecret, passphrase) : null,
-      };
+        fullSecret: secretKey,
+        agentPublicKey: scoped?.publicKey ?? null,
+        agentSecret: null,
+        passphrase,
+      });
       const next: VaultRecord = { version: 1, active: slot, other: null, createdAt: new Date().toISOString() };
       saveVault(next);
       onReady(await sessionFromVault(next, passphrase), next);
@@ -272,8 +283,11 @@ function PassphraseFields({ passphrase, confirm, setPassphrase, setConfirm }: {
   return (
     <>
       <label className="grid gap-1 text-sm">
-        Passphrase
+        Passphrase (at least {MIN_PASSPHRASE} characters)
         <input className="field" type="password" autoComplete="new-password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} />
+        <span className="text-xs text-muted" aria-live="polite">
+          {passphrase.length === 0 ? "Four random words are strong and easy to remember." : passphraseProblem(passphrase) ?? `Length ${passphrase.length}: OK.`}
+        </span>
       </label>
       <label className="grid gap-1 text-sm">
         Confirm passphrase

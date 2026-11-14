@@ -10,8 +10,13 @@ export function isValidAccountId(accountId: string): boolean {
   return NAMED.test(accountId);
 }
 
+/**
+ * Trims and lowercases ASCII letters only. Non-ASCII characters are kept as they are, so the result
+ * fails isValidAccountId instead of being remapped onto a different real account (Unicode
+ * lowercasing turns KELVIN SIGN + "ob.testnet" into "kob.testnet").
+ */
 export function normalizeAccountId(input: string): string {
-  return input.trim().toLowerCase();
+  return input.trim().replace(/[A-Z]/g, (char) => char.toLowerCase());
 }
 
 /**

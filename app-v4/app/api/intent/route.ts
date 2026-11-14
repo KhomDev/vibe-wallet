@@ -1,5 +1,9 @@
 import { NEAR_AI_BASE_URL, NEAR_AI_MODEL } from "@/lib/config";
+import { looksLikeSecret } from "@/lib/errors";
 import { acceptModelIntent, INTENT_SYSTEM_PROMPT, parseIntent, sanitizeIntent, type WalletIntent } from "@/lib/intent";
+import { clientIp } from "@/lib/server/env";
+import { json } from "@/lib/server/http";
+import { hit, ROUTE_LIMITS, tooMany } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,16 +73,26 @@ export async function POST(request: Request): Promise<Response> {
     const body = await request.json();
     message = typeof body?.message === "string" ? body.message.slice(0, 1000) : "";
   } catch {
-    return Response.json(local("", "The request was empty, so the local parser answered."), { status: 200 });
+    return json(local("", "The request was empty, so the local parser answered."), { status: 200 });
   }
   if (!message.trim()) {
-    return Response.json(local(message, null));
+    return json(local(message, null));
+  }
+  // A pasted private key or seed phrase never leaves this server, not even to the model.
+  if (looksLikeSecret(message)) {
+    return json({ error: "That looks like a private key or seed phrase. It was not sent anywhere. Never paste it into a chat." }, { status: 400 });
   }
 
   const apiKey = process.env.NEAR_AI_API_KEY;
   if (!apiKey) {
-    return Response.json(local(message, "NEAR_AI_API_KEY is not set. Using the deterministic local parser."));
+    return json(local(message, "NEAR_AI_API_KEY is not set. Using the deterministic local parser."));
   }
+  // The model call costs money: per-client and per-instance limits, then the local parser.
+  const ip = clientIp(request);
+  const mine = hit(`intent:${ip}`, ROUTE_LIMITS.intent);
+  if (!mine.ok) return tooMany(mine.retryAfterSec, "Too many requests from this network. Wait a moment and try again.");
+  const all = hit("intent:global", ROUTE_LIMITS.modelGlobal);
+  if (!all.ok) return json(local(message, "NEAR AI is busy right now, so the local parser answered."));
 
   try {
     const response = await fetch(`${NEAR_AI_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
@@ -101,23 +115,23 @@ export async function POST(request: Request): Promise<Response> {
     });
     // 401 (invalid/expired) and 402 (no spending limit / no credits) both fall back silently.
     if (response.status === 401 || response.status === 402 || !response.ok) {
-      return Response.json(local(message, "Used the local parser."));
+      return json(local(message, "Used the local parser."));
     }
     const payload = await response.json();
     const content = messageText(payload);
     if (!content) {
-      return Response.json(local(message, "NEAR AI Cloud returned an empty answer. Used the local parser instead."));
+      return json(local(message, "NEAR AI Cloud returned an empty answer. Used the local parser instead."));
     }
     const sanitized = sanitizeIntent(extractJson(content));
     if (!sanitized) {
-      return Response.json(local(message, "NEAR AI Cloud returned an unusable intent. Used the local parser instead."));
+      return json(local(message, "NEAR AI Cloud returned an unusable intent. Used the local parser instead."));
     }
-    return Response.json({
+    return json({
       intent: acceptModelIntent(message, sanitized),
       source: "near-ai",
       note: null,
     } satisfies IntentResponse);
   } catch {
-    return Response.json(local(message, "NEAR AI Cloud was unreachable. Used the local parser instead."));
+    return json(local(message, "NEAR AI Cloud was unreachable. Used the local parser instead."));
   }
 }

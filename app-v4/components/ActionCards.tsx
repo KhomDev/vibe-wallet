@@ -2,7 +2,7 @@
 
 import { explorerTxUrl } from "@/lib/config";
 import type { IntentSource, QuoteView } from "@/lib/client";
-import { normalizePhrase, type SendCheck } from "@/lib/policy";
+import { phraseMatches, type SendCheck } from "@/lib/policy";
 
 export type Pending =
   | {
@@ -13,9 +13,12 @@ export type Pending =
       balanceAfterNear: string;
       amountYocto: string;
       check: SendCheck;
+      /** Demo only: the server's confirmation token for exactly this send. */
+      confirmToken?: string | null;
     }
   | { kind: "resume" }
-  | { kind: "allow"; recipient: string }
+  | { kind: "allow"; recipient: string; retryAmountNear?: string }
+  | { kind: "scoped_key" }
   | { kind: "limits"; perTxNear?: string; dailyNear?: string; thresholdNear?: string }
   | { kind: "schedule"; recipient: string; amountNear: string; cadence: "weekly_friday" | "daily" }
   | { kind: "price"; belowUsd: number; amountNear: string; toSymbol: "USDC" | "USDT" };
@@ -36,6 +39,7 @@ export function ActionCards({
   receipt,
   quote,
   busy,
+  showPhrase,
   onPhrase,
   onConfirm,
   onCancel,
@@ -50,14 +54,16 @@ export function ActionCards({
   receipt: ReceiptView | null;
   quote: QuoteView | null;
   busy: boolean;
+  /** The demo shows its public phrase; a personal wallet only asks for "your confirm phrase". */
+  showPhrase: boolean;
   onPhrase: (value: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
   onDismissReceipt: () => void;
   onDismissQuote: () => void;
 }) {
-  const needsPhrase = pending?.kind === "send" ? pending.check.needsPhrase : pending?.kind === "schedule" || pending?.kind === "price" ? false : Boolean(pending);
-  const phraseOk = !needsPhrase || normalizePhrase(phrase) === normalizePhrase(confirmPhrase);
+  const needsPhrase = pending?.kind === "send" ? pending.check.needsPhrase : pending?.kind === "schedule" || pending?.kind === "price" || pending?.kind === "scoped_key" ? false : Boolean(pending);
+  const phraseOk = !needsPhrase || phraseMatches({ confirmPhrase }, phrase);
   const blocked = pending?.kind === "send" ? Boolean(pending.check.blockReason) : false;
 
   return (
@@ -83,12 +89,23 @@ export function ActionCards({
                   <p className="font-semibold">Why this needs the confirm phrase</p>
                   <ul className="list-disc pl-5 text-sm">{pending.check.phraseReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
                 </div>
-              ) : <p className="text-sm">This recipient is allowlisted and under your threshold. Click Confirm, or say confirm.</p>}
+              ) : <p className="text-sm">This recipient is allowlisted and the amount is under your extra-confirm threshold, so the slide alone confirms.</p>}
               {pending.check.blockReason ? <p className="banner banner-danger" role="alert">{pending.check.blockReason}</p> : null}
             </>
           ) : null}
           {pending.kind === "resume" ? <h2 className="text-2xl font-semibold">Resume sending</h2> : null}
-          {pending.kind === "allow" ? <h2 className="text-2xl font-semibold">Allow {pending.recipient}</h2> : null}
+          {pending.kind === "allow" ? (
+            <>
+              <h2 className="text-2xl font-semibold">Allow <span className="mono break-all">{pending.recipient}</span></h2>
+              <p className="text-sm">Allowlisted recipients skip the confirm phrase for sends under your threshold{pending.retryAmountNear ? `. After this, the ${pending.retryAmountNear} NEAR send is drafted again for your slide` : ""}.</p>
+            </>
+          ) : null}
+          {pending.kind === "scoped_key" ? (
+            <>
+              <h2 className="text-2xl font-semibold">Add the scoped key</h2>
+              <p>Signs one AddKey transaction from this browser: a function-call key that can call only two view-style methods and cannot transfer NEAR.</p>
+            </>
+          ) : null}
           {pending.kind === "limits" ? (
             <>
               <h2 className="text-2xl font-semibold">Change limits</h2>
@@ -109,12 +126,12 @@ export function ActionCards({
               <p className="banner banner-warn">Quote only. NEAR Intents have no testnet execution, so the agent will not swap.</p>
             </>
           ) : null}
-          {pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" ? <p>Enter the confirm phrase, then click Confirm. This does not move NEAR by itself.</p> : null}
+          {pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" && pending.kind !== "scoped_key" ? <p>Enter the confirm phrase, then click Confirm. This does not move NEAR by itself.</p> : null}
           <p className="text-sm">Your private key stays in this browser. The assistant never receives it.</p>
           {needsPhrase ? (
             <label className="grid gap-1 text-sm">
-              Type: {confirmPhrase}
-              <input className="field" value={phrase} onChange={(event) => onPhrase(event.target.value)} autoComplete="off" />
+              {showPhrase ? <>Type: {confirmPhrase}</> : "Type your confirm phrase (set in the Safety tab)"}
+              <input className="field" type={showPhrase ? "text" : "password"} value={phrase} onChange={(event) => onPhrase(event.target.value)} autoComplete="off" data-testid="card-phrase" />
             </label>
           ) : null}
           <div className="flex flex-wrap gap-2">

@@ -83,12 +83,15 @@ test("typed commands, voice via fake audio, slide-to-confirm send, and the Walle
 
   await page.getByTestId("command-input").fill(`send 0.1 NEAR to ${RECIPIENT}`);
   await page.getByRole("button", { name: "Ask" }).click();
-  const slider = page.getByRole("slider", { name: "Slide to confirm" });
+  const slider = page.getByRole("slider", { name: /Slide to confirm/ });
   await expect(slider).toBeVisible({ timeout: 30_000 });
-  // The demo friend is allowlisted and 0.1 NEAR is under the cap, so no typed phrase is needed.
+  // The demo friend is allowlisted and 0.1 NEAR is under the 0.2 extra-confirm threshold, so no typed phrase is needed.
   await expect(page.getByTestId("confirm-phrase")).toHaveCount(0);
   await slider.focus();
+  // One Enter no longer confirms; the keyboard path is four right-arrow steps.
   await slider.press("Enter");
+  await expect(page.getByRole("link", { name: /View transaction/i })).toHaveCount(0);
+  for (let step = 0; step < 4; step += 1) await slider.press("ArrowRight");
   await expect(page.getByRole("link", { name: /View transaction/i })).toBeVisible({ timeout: 60_000 });
   const href = await page.getByRole("link", { name: /View transaction/i }).getAttribute("href");
   expect(href).toMatch(/^https:\/\/testnet\.nearblocks\.io\/txns\//);

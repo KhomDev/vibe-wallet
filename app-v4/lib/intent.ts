@@ -26,7 +26,21 @@ export type WalletIntent =
   | { type: "unknown"; reason: string };
 
 const AMOUNT = "([0-9]+(?:\\.[0-9]+)?)";
-const ACCOUNT = "([a-z0-9][a-z0-9._-]{1,63})(?![:\\w])";
+// An account token must end at whitespace, the end, or ASCII punctuation. Anything else right after
+// it (a zero-width space, a combining mark, a non-ASCII letter) means the id was not what it looks
+// like, so the match fails instead of silently truncating "bo​b.testnet" to "bo".
+const ACCOUNT = "([a-z0-9][a-z0-9._-]{1,63})(?=$|[\\s,;!?)\\]\"'])";
+
+// Invisible format characters (zero-width space/joiner, word joiner, bidi overrides) and combining
+// marks have no place in a wallet command; they are how look-alike account ids are built.
+const HIDDEN = /[\p{Cf}\p{Mn}\p{Me}]/u;
+
+export function hasHiddenCharacters(input: string): boolean {
+  return HIDDEN.test(input);
+}
+
+/** "don't send…", "do not pay…", "never transfer…": the user is describing what not to do. */
+const NEGATED_SEND = /\b(?:don't|dont|do not|never|not|no)\b[^.!?]{0,24}\b(?:send|transfer|pay|stop)\b/;
 
 // "Who can I send to?", "show my allowlist", "list allow list entries", "my contacts", "allowed recipients".
 const ALLOWLIST_QUERY = new RegExp(
@@ -42,9 +56,14 @@ const ALLOWLIST_QUERY = new RegExp(
   ].join("|"),
 );
 
+/** Lowercases ASCII only: Unicode lowercasing maps look-alikes (KELVIN SIGN → "k") onto real ids. */
+export function asciiLower(input: string): string {
+  return input.replace(/[A-Z]/g, (char) => char.toLowerCase());
+}
+
 export function normalizeUtterance(input: string): string {
-  return input
-    .toLowerCase()
+  return asciiLower(input)
+    .replace(/[‘’]/g, "'")
     .replace(/[?!，。]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -66,9 +85,15 @@ function asSymbol(value: string): "USDT" | "USDC" | "ETH" | null {
 export function parseIntent(input: string): WalletIntent {
   const text = normalizeUtterance(input);
   if (!text) return { type: "unknown", reason: "yo, what do you wanna do?" };
+  if (hasHiddenCharacters(input)) {
+    return { type: "unknown", reason: "that has hidden characters in it. retype the account name." };
+  }
 
-  if (/\b(stop|kill switch|freeze|halt)\b/.test(text) && !/\b(do not|don't|dont)\b/.test(text)) {
+  if (/\b(stop|kill switch|freeze|halt)\b/.test(text) && !/\b(do not|don't|dont|never|not)\b/.test(text)) {
     return { type: "stop" };
+  }
+  if (NEGATED_SEND.test(text)) {
+    return { type: "unknown", reason: "sounds like you don't want to send, so nothing's drafted." };
   }
   if (/\b(resume|unfreeze|turn sending back on|disable the kill)\b/.test(text)) {
     return { type: "resume" };
@@ -110,11 +135,18 @@ export function parseIntent(input: string): WalletIntent {
   }
 
   const scheduled = text.match(new RegExp(`(?:send|transfer|pay)\\s+${AMOUNT}\\s*(?:near|n)?\\s+to\\s+${ACCOUNT}\\s+every\\s+(friday|week|weekly|day|daily)`));
-  if (scheduled) {
-    const recipient = asAccount(scheduled[2]);
+  // The same rule with the cadence first: "every Friday send 0.1 NEAR to bob".
+  const leading = text.match(new RegExp(`\\bevery\\s+(friday|week|weekly|day|daily)\\s*,?\\s+(?:send|transfer|pay)\\s+${AMOUNT}\\s*(?:near|n)?\\s+to\\s+${ACCOUNT}`));
+  if (scheduled || leading) {
+    const [amount, account, when] = scheduled ? [scheduled[1], scheduled[2], scheduled[3]] : [leading![2], leading![3], leading![1]];
+    const recipient = asAccount(account);
     if (!recipient) return { type: "unknown", reason: "hmm, that recipient isn't a valid NEAR account." };
-    const cadence = /friday|week/.test(scheduled[3]) ? "weekly_friday" : "daily";
-    return { type: "schedule_send", amountNear: scheduled[1], recipient, cadence };
+    const cadence = /friday|week/.test(when) ? "weekly_friday" : "daily";
+    return { type: "schedule_send", amountNear: amount, recipient, cadence };
+  }
+  // A recurring request in a shape we did not recognise must never become a one-off send now.
+  if (/\b(every|each|weekly|daily|recurring)\b/.test(text) && /\b(send|transfer|pay)\b/.test(text)) {
+    return { type: "unknown", reason: "sounds like a repeat payment. try \"send 0.1 NEAR to bob every Friday\"." };
   }
 
   const price = text.match(new RegExp(`if\\s+near\\s+(?:drops?\\s+)?(?:below|under|falls?\\s+below)\\s+\\$?\\s*${AMOUNT}\\s*[,.]?\\s*(?:then\\s+)?(?:swap|sell|quote)\\s+${AMOUNT}\\s*(?:near|n)?\\s*(?:to|for|into)\\s+(usdc|usdt)`));
@@ -224,24 +256,78 @@ export function sanitizeIntent(value: unknown): WalletIntent | null {
   }
 }
 
-function mentioned(haystack: string, recipient: string): boolean {
-  const id = recipient.toLowerCase();
-  if (haystack.includes(id)) return true;
-  const bare = id.replace(/\.(testnet|near)$/, "");
-  return bare !== id && new RegExp(`(^|[^a-z0-9._-])${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9_-])`).test(haystack);
+/** Account-shaped tokens in what the user said, resolved the same way as a typed recipient. */
+function accountTokens(message: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of normalizeUtterance(message).split(/[\s,;!?()[\]"']+/)) {
+    const token = raw.replace(/^@+/, "").replace(/[.:]+$/, "");
+    if (!/^[a-z0-9][a-z0-9._-]{1,63}$/.test(token)) continue;
+    tokens.add(token);
+    const resolved = resolveAccountInput(token, NETWORK_ID);
+    if (isValidAccountId(resolved)) tokens.add(resolved);
+  }
+  return tokens;
 }
 
+/** True when the recipient is a whole token of the message, not a substring of a longer id. */
+export function mentionsAccount(message: string, recipient: string): boolean {
+  return accountTokens(message).has(recipient);
+}
+
+const NUMBER_WORDS: Record<string, string> = {
+  zero: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
+  half: "0.5", "a half": "0.5", "a tenth": "0.1", "one tenth": "0.1",
+};
+
+function sameDecimal(left: string, right: string): boolean {
+  const norm = (value: string) => {
+    const [whole, fraction = ""] = value.replace(/^0+(?=\d)/, "").split(".");
+    return `${whole || "0"}.${fraction.replace(/0+$/, "")}`;
+  };
+  return norm(left) === norm(right);
+}
+
+/** True when the amount appears in the message as a number (or a simple number word). */
+export function mentionsAmount(message: string, amountNear: string): boolean {
+  const text = normalizeUtterance(message);
+  const numbers = text.match(/\d+(?:\.\d+)?|\.\d+/g) ?? [];
+  if (numbers.some((value) => sameDecimal(value.startsWith(".") ? `0${value}` : value, amountNear))) return true;
+  for (const [word, value] of Object.entries(NUMBER_WORDS)) {
+    if (new RegExp(`\\b${word}\\b`).test(text) && sameDecimal(value, amountNear)) return true;
+  }
+  const point = text.match(/\b(zero|one|two|three|four|five|six|seven|eight|nine)?\s*point\s+(zero|one|two|three|four|five|six|seven|eight|nine)\b/);
+  if (point) {
+    const value = `${NUMBER_WORDS[point[1] ?? "zero"] ?? "0"}.${NUMBER_WORDS[point[2]]}`;
+    if (sameDecimal(value, amountNear)) return true;
+  }
+  return false;
+}
+
+/** Words the user must have said for the model's intent to be taken at face value. */
+const CORROBORATE: Partial<Record<WalletIntent["type"], RegExp>> = {
+  stop: /\b(stop|kill|freeze|halt|pause)\b/,
+  resume: /\b(resume|unfreeze|unpause|back on|start sending|turn on)\b/,
+  run_agent: /\b(agent|rules?)\b/,
+  quote_swap: /\b(swap|quote|exchange|convert|price|usdc|usdt|eth)\b/,
+  set_limit: /\b(limit|threshold|cap|confirm above)\b/,
+  allow: /\b(allow|trust|whitelist|add)\b/,
+};
+
+/**
+ * Accepts a model-produced intent only if the user's own words back it: the recipient must be a
+ * whole account token they said, the amount must be a number they said, and actions such as stop
+ * or a swap quote need a matching word. Otherwise the deterministic local parser decides.
+ */
 export function acceptModelIntent(message: string, intent: WalletIntent): WalletIntent {
-  const haystack = message.toLowerCase();
-  if (intent.type === "send" && !mentioned(haystack, intent.recipient)) {
+  const text = normalizeUtterance(message);
+  if (hasHiddenCharacters(message) || NEGATED_SEND.test(text)) return parseIntent(message);
+  if ((intent.type === "send" || intent.type === "schedule_send") && (!mentionsAccount(message, intent.recipient) || !mentionsAmount(message, intent.amountNear))) {
     return parseIntent(message);
   }
-  if (intent.type === "allow" && !mentioned(haystack, intent.recipient)) {
-    return parseIntent(message);
-  }
-  if (intent.type === "schedule_send" && !mentioned(haystack, intent.recipient)) {
-    return parseIntent(message);
-  }
+  if (intent.type === "allow" && !mentionsAccount(message, intent.recipient)) return parseIntent(message);
+  if (intent.type === "price_rule" && !mentionsAmount(message, intent.amountNear)) return parseIntent(message);
+  const needed = CORROBORATE[intent.type];
+  if (needed && !needed.test(text)) return parseIntent(message);
   return intent;
 }
 

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:logic": "tsx --test tests/*.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "mainnet:check": "tsx scripts/mainnet-check.ts"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",

@@ -9,6 +9,7 @@ export function SlideConfirm({ disabled, hint, onConfirm }: { disabled?: boolean
   const x = useMotionValue(0);
   const stretch = useMotionValue(1);
   const [max, setMax] = useState(0);
+  const [steps, setSteps] = useState(0);
   const done = useRef(false);
 
   useEffect(() => {
@@ -73,18 +74,30 @@ export function SlideConfirm({ disabled, hint, onConfirm }: { disabled?: boolean
           role="slider"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Slide to confirm"
+          aria-valuenow={steps * 25}
+          aria-valuetext={steps >= 4 ? "confirmed" : `${steps * 25}%. Press the right arrow ${4 - steps} more times to confirm.`}
+          aria-label="Slide to confirm. Use the right arrow key four times."
           aria-disabled={disabled}
           tabIndex={0}
           onKeyDown={(event) => {
+            // No one-key confirm: Enter and Space do nothing, so a single keystroke (or a framed,
+            // focus-stealing page) cannot complete a send. Keyboard users step the knob instead.
             if (disabled || done.current) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              done.current = true;
-              void animate(x, max, { type: "spring", stiffness: 520, damping: 24 });
-              pop(700);
-              haptic([12, 30, 18]);
-              onConfirm();
+              return;
+            }
+            if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "Home") {
+              event.preventDefault();
+              const next = event.key === "Home" ? 0 : Math.max(0, Math.min(4, steps + (event.key === "ArrowRight" ? 1 : -1)));
+              setSteps(next);
+              void animate(x, (max * next) / 4, { type: "spring", stiffness: 520, damping: 26 });
+              if (next >= 4) {
+                done.current = true;
+                pop(700);
+                haptic([12, 30, 18]);
+                onConfirm();
+              }
             }
           }}
         >

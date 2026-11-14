@@ -117,3 +117,32 @@ test("transcribe route forwards audio to NEAR AI Whisper and returns the text", 
   assert.equal(json.source, "near-ai-whisper");
   assert.equal(sawModel, "openai/whisper-large-v3");
 });
+
+test("VW-WEB-02: the intent route rate-limits paid model calls per client", async () => {
+  const { resetRateLimits } = await import("../lib/server/rate-limit");
+  resetRateLimits();
+  process.env.NEAR_AI_API_KEY = "test-key-not-real";
+  let outbound = 0;
+  globalThis.fetch = (async () => {
+    outbound += 1;
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"type":"get_balance"}' } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const statuses: number[] = [];
+  for (let i = 0; i < 25; i += 1) statuses.push((await postIntent("What's my balance?", { headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" } })).status);
+  assert.equal(outbound, 20, "20 model calls per minute per client");
+  assert.equal(statuses.filter((code) => code === 429).length, 5);
+  resetRateLimits();
+});
+
+test("VW-CRYPTO-03: a pasted secret is refused by the intent route and never forwarded", async () => {
+  process.env.NEAR_AI_API_KEY = "test-key-not-real";
+  let outbound = 0;
+  globalThis.fetch = (async () => {
+    outbound += 1;
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  const bare = "5".repeat(20) + "AbCdEfGhJkLmNpQrStUvWxYz".repeat(3);
+  const { status } = await postIntent(`here is my key ${bare}`);
+  assert.equal(status, 400);
+  assert.equal(outbound, 0);
+});

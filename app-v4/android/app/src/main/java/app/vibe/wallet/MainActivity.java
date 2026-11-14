@@ -14,6 +14,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.net.Uri;
 import android.view.View;
+import android.view.WindowManager;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
@@ -24,6 +25,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Keep wallet screens (balances, phrases, confirm cards) out of screenshots and the recents view.
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -43,21 +46,39 @@ public class MainActivity extends BridgeActivity {
 }
 
 /**
- * Grants WebView microphone (and other) permission requests immediately after the
- * Android runtime permission is available, while delegating the rest of Capacitor's
- * Chrome client behavior.
+ * Grants exactly one WebView permission: microphone capture, and only to the app's own origin.
+ * Every other resource (camera, protected media, MIDI) and every other origin, including a page
+ * the WebView was navigated or framed to, is denied. The rest of Capacitor's Chrome client
+ * behavior is delegated unchanged.
  */
 class MicGrantChromeClient extends WebChromeClient {
+    static final String APP_ORIGIN = "https://vibe-wallet-flame.vercel.app";
     private final WebChromeClient delegate;
 
     MicGrantChromeClient(WebChromeClient delegate) {
         this.delegate = delegate;
     }
 
+    static boolean isAppOrigin(Uri origin) {
+        if (origin == null) return false;
+        String value = origin.getScheme() + "://" + origin.getHost() + (origin.getPort() == -1 ? "" : ":" + origin.getPort());
+        return APP_ORIGIN.equals(value);
+    }
+
     @Override
     public void onPermissionRequest(final PermissionRequest request) {
         if (request == null) return;
-        request.grant(request.getResources());
+        if (!isAppOrigin(request.getOrigin())) {
+            request.deny();
+            return;
+        }
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                request.grant(new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
+                return;
+            }
+        }
+        request.deny();
     }
 
     @Override

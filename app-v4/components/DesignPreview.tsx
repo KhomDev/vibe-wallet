@@ -39,9 +39,13 @@ export function DesignPreview({ mode }: { mode: "orb" | "confirm" | "wallet" | "
               keys={[]}
               accountId="demo-account.testnet"
               hasAgentKey={false}
+              hasScopedKeyOnChain={false}
               busy={false}
               demo
               onChange={() => undefined}
+              onAllow={() => undefined}
+              onRemoveAllow={() => undefined}
+              onAddScopedKey={() => undefined}
               onKill={() => undefined}
               onResume={() => undefined}
               onRefreshKeys={() => undefined}
@@ -67,6 +71,10 @@ export function DesignPreview({ mode }: { mode: "orb" | "confirm" | "wallet" | "
             hasAgentKey={false}
             busy={false}
             onPolicy={() => undefined}
+            onAllow={() => undefined}
+            onRemoveAllow={() => undefined}
+            onAddScopedKey={() => undefined}
+            hasScopedKeyOnChain={false}
             onKill={() => undefined}
             onResume={() => undefined}
             onRefreshKeys={() => undefined}

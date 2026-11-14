@@ -18,7 +18,8 @@ test("stop words end the session but kill-switch phrases do not", () => {
 });
 
 test("spoken yes and no for voice confirm", () => {
-  for (const t of ["yes", "Yeah.", "do it", "yep send it", "go ahead"]) assert.match(t, YES);
+  for (const t of ["yes", "Yeah.", "do it", "yep send it", "Yes, do it."]) assert.match(t, YES);
+  for (const t of ["go ahead", "ok", "sure"]) assert.doesNotMatch(t, YES);
   for (const t of ["no", "nah", "cancel that", "wait"]) assert.match(t, NO);
   assert.doesNotMatch("send 0.2 to bob", YES);
 });

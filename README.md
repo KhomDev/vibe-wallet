@@ -17,7 +17,7 @@ check it, and nothing is signed until you confirm: in your own wallet, or with a
 
 Built at **NEAR HACKATHON 2026**
 
-[Live demo](https://vibe-wallet-flame.vercel.app) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
+[Live demo](https://vibe-wallet-flame.vercel.app) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Mainnet proof](#mainnet-proof) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
 
 </div>
 
@@ -310,6 +310,21 @@ All enforced on the server (`app-v4/lib/server/demo-limits.ts`):
 | Per network (hashed IP) | 3 NEAR per UTC day, 15 sends per hour, 40 per day, 20 new visitor ids per day |
 | Whole demo account | 20 NEAR per UTC day (amounts plus fees), 120 sends per hour |
 | Agent | 3 rules per visitor; each payment counts against the owner's visitor, network and global limits |
+
+## Mainnet proof
+
+**14 Nov 2026, 16:17–16:18 CET: one executed NEAR Intents swap on NEAR mainnet**, run through the app's own
+executed-swap path (`lib/server/intents-swap.ts`, 1Click `dry:false`, 0.05 NEAR cap), account `hlpok1lad.tg`.
+
+| Step | Mainnet transaction |
+|---|---|
+| Wrap 0.03 NEAR → wNEAR | [3jTvJQ3H…LKKQ](https://nearblocks.io/txns/3jTvJQ3HdQiv7E7FwqK73XuNQucLv1n9qMjvnrvfLKKQ) |
+| **Swap: Intents deposit of 0.03 wNEAR → 0.09625 USDC, status `SUCCESS`** | [FycVpzvC…frUg](https://nearblocks.io/txns/FycVpzvC4whBX41S6zBAxuQeVsFjxgcXxrdDio6frUg) |
+| USDC delivered to `hlpok1lad.tg` (`intents.near::execute_intents`) | [5dPep7P6…PR9c](https://nearblocks.io/txns/5dPep7P6Z2vZCr2RQxoEeGQykBnNs2KgEGm7SkYfPR9c) |
+
+<p align="center"><img src="docs/mainnet-swap-proof.png" width="640" alt="Executed mainnet swap: 0.03 NEAR to 0.09625 USDC, status SUCCESS"> <img src="docs/swap-card.png" width="220" alt="The swap card in the live app"></p>
+
+Full record (quote, deposit address, intent hashes, settlement): [docs/evidence/mainnet-swap-2026-11-14.json](docs/evidence/mainnet-swap-2026-11-14.json).
 
 ## Mainnet
 

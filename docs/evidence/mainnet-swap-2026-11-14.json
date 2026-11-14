@@ -1,0 +1,80 @@
+{
+  "accountId": "hlpok1lad.tg",
+  "startedAt": "2026-11-14T15:17:33.443Z",
+  "finishedAt": "2026-11-14T15:18:20.628Z",
+  "amountNear": "0.03",
+  "to": "USDC",
+  "wrapTx": "3jTvJQ3HdQiv7E7FwqK73XuNQucLv1n9qMjvnrvfLKKQ",
+  "wrapUrl": "https://nearblocks.io/txns/3jTvJQ3HdQiv7E7FwqK73XuNQucLv1n9qMjvnrvfLKKQ",
+  "depositTx": "FycVpzvC4whBX41S6zBAxuQeVsFjxgcXxrdDio6frUg",
+  "depositUrl": "https://nearblocks.io/txns/FycVpzvC4whBX41S6zBAxuQeVsFjxgcXxrdDio6frUg",
+  "depositAddress": "397abc9bcc8747cb42da6280ae0c4acf2b68deaa1db7092452fe4dcf3e2cdbea",
+  "status": "SUCCESS",
+  "settlement": {
+    "depositedAmount": "30000000000000000000000",
+    "depositedAmountUsd": "0.096300000000",
+    "depositedAmountFormatted": "0.03",
+    "intentHashes": [
+      "4EGMCvrFVaRQMUiKVKfd6QKmc5RXQmXMS8ffTo7QKqp5",
+      "YNAKbFc3cUbwTxGc7YY9Mz32XQDgc5DJnS5aCZX4AAW"
+    ],
+    "nearTxHashes": [
+      "99fZwCcx8eEaJZ9QKaZgUGPhXBnywKHZrGrzP4NPqqBm",
+      "6LY2NWWbc9ZfUxxPJBuk7feuE9wVriEo7TgmYpLGy3CD",
+      "XLKr6NfYEGq1GwYpVK3D294jRRzXmkrUrX6D4GgCo3j",
+      "5dPep7P6Z2vZCr2RQxoEeGQykBnNs2KgEGm7SkYfPR9c"
+    ],
+    "amountIn": "30000000000000000000000",
+    "amountInFormatted": "0.03",
+    "amountInUsd": "0.096600000000",
+    "amountOut": "96250",
+    "amountOutFormatted": "0.09625",
+    "amountOutUsd": "0.096217563750",
+    "slippage": 9,
+    "refundedAmount": "0",
+    "refundedAmountFormatted": "0",
+    "refundedAmountUsd": "0",
+    "refundReason": null,
+    "refundFee": "0",
+    "withdrawFee": "0",
+    "originChainTxHashes": [
+      {
+        "hash": "FycVpzvC4whBX41S6zBAxuQeVsFjxgcXxrdDio6frUg",
+        "explorerUrl": ""
+      }
+    ],
+    "destinationChainTxHashes": [
+      {
+        "hash": "5dPep7P6Z2vZCr2RQxoEeGQykBnNs2KgEGm7SkYfPR9c",
+        "explorerUrl": ""
+      }
+    ]
+  },
+  "quote": {
+    "amountIn": "30000000000000000000000",
+    "amountInFormatted": "0.03",
+    "amountInUsd": "0.096300000000",
+    "minAmountIn": "30000000000000000000000",
+    "amountOut": "96339",
+    "amountOutFormatted": "0.096339",
+    "amountOutUsd": "0.096300000000",
+    "minAmountOut": "95375",
+    "timeEstimate": 22,
+    "refundFee": "0",
+    "withdrawFee": "0",
+    "deadline": "2026-11-17T15:37:33.444Z",
+    "timeWhenInactive": "2026-11-17T15:37:33.444Z",
+    "depositAddress": "397abc9bcc8747cb42da6280ae0c4acf2b68deaa1db7092452fe4dcf3e2cdbea"
+  },
+  "availableBefore": "3.866899",
+  "availableAfter": "3.835084",
+  "usdcDeliveryTx": "5dPep7P6Z2vZCr2RQxoEeGQykBnNs2KgEGm7SkYfPR9c",
+  "usdcDeliveredToAccount": "96250 (0.09625 USDC, nep141 ft_transfer intents.near -> hlpok1lad.tg)",
+  "network": "mainnet",
+  "runner": "app-v4/lib/server/intents-swap.ts executeIntentsSwap (1Click, dry:false), maxNear 0.05",
+  "blockTimesEuropeBudapest": {
+    "wrap": "2026-11-14T16:17:34+01:00 (block 224531781)",
+    "deposit": "2026-11-14T16:17:37+01:00 (block 224531785)",
+    "usdcDelivery": "2026-11-14T16:18:14+01:00"
+  }
+}

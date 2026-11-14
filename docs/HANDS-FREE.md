@@ -12,8 +12,14 @@ Say **"stop"** or **"bye"** to end the session, or tap the big red **Stop** butt
 
 ## Voice confirm
 
-- **Allowlisted recipient, within the limits:** "send 0.2 to bob? say yes to confirm." Answer "yes", "yeah", "yep" or "do it" to send. "No", "nah" or "cancel" cancels.
-- **Anyone else, or above a limit:** it says the send needs the on-screen slide, and the confirm card stays on screen. Voice can never approve these sends.
+Voice can confirm only one kind of send: **to an allowlisted recipient, below your extra-confirm threshold, within every limit** (on the demo: an allowlisted contact, under 0.2 NEAR).
+
+- The wallet asks with the amount and the recipient: *"send 0.1 NEAR to bob? say yes to confirm, or no."*
+- **Yes must be the whole answer:** "yes", "yeah", "yep", "yup", "confirm", "send it", "do it", or "yes, do it". "ok", "sure", "go", "go ahead", "absolutely" and anything longer ("go to history", "yes but later") do not send.
+- **Negatives are checked first and win:** any "no", "nah", "cancel", "wait", "stop", "not" or "don't" in the answer cancels, so "sure, not now" cancels.
+- **The question expires** after 15 seconds, when the card on screen changes, or when you say anything else. After that, "yes" means nothing until the wallet asks again.
+- Everything else (a recipient not on your allowlist, an amount at or above the threshold, a typo of a contact, an implicit account) needs the on-screen slide, and the confirm phrase when the card asks for it. Voice can never approve those sends.
+- A spoken confirm phrase fills in the phrase field only when the phrase is the **whole** utterance, never when a longer sentence happens to contain it. You still slide.
 - The kill switch and all limits apply exactly as they do for typed commands.
 
 ## How the wake word works
@@ -24,7 +30,7 @@ Why this approach:
 
 - **Web Speech API** (`SpeechRecognition`) is missing in the Android WebView that the APK uses and fails with `network` errors in Brave, Edge and some networks, so it can't be the only path.
 - **Picovoice Porcupine Web** needs a per-developer AccessKey and a custom-trained "hey vibe" keyword file. Neither is available for this build.
-- **Energy-gated Whisper clips** work the same in iOS Safari, Android Chrome and the APK, and they only cost money when someone is actually talking.
+- **Energy-gated Whisper clips** work the same in iOS Safari, Android Chrome and the APK, and they only cost money when someone is actually talking. `/api/transcribe` is rate-limited per client (15 clips a minute, 200 a day).
 
 ## Echo and screen
 
@@ -39,7 +45,6 @@ NEAR AI Cloud has no text-to-speech model, and there is no TTS provider key in t
 
 - **Screen off or app in the background:** no wake word. iOS suspends the microphone and audio for web apps and PWAs, and the Android WebView pauses capture in the background. Keep the app open with the screen on (the Wake Lock does that while the session runs).
 - **iOS needs one tap to start.** Speech and microphone audio can only begin from a user gesture. The 🎧 tap does that.
-- **The first session asks for microphone permission.** iOS may ask again after a page reload.
+- **The first session asks for microphone permission.** iOS may ask again after a page reload. In the APK, only the app's own origin can get the microphone (APK 1.2).
 - **Cost and latency:** each spoken turn is one Whisper call (a few seconds of audio) plus one intent call. Silence costs nothing. Background chatter that sounds like speech can trigger a clip; it's discarded unless the wake phrase is in it.
 - **Long implicit account ids can't be spoken reliably.** Use allowlisted named accounts, or tap **Send 0.1** on the "Who can I send to?" card.
-- Voice confirm is skipped for anything that isn't allowlisted and within the limits. Those sends always need the slide.

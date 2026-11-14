@@ -1,0 +1,102 @@
+{
+  "base": "local production build (next start), NEAR testnet",
+  "recipient": "tpd-081ea8-gateway.testnet",
+  "at": "2026-11-14T01:01:54.391Z",
+  "failed": 0,
+  "results": [
+    {
+      "step": "page: CSP frame-ancestors 'none' and X-Frame-Options DENY",
+      "ok": true,
+      "note": "DENY"
+    },
+    {
+      "step": "session: visitor cookie minted, network reported",
+      "ok": true,
+      "note": "7631a8868457d186337c9498604916a211ce502827358e186ea1ecbbd8de9de7 -> tpd-081ea8-gateway.testnet, available 3.897751"
+    },
+    {
+      "step": "session: no-store cache header",
+      "ok": true,
+      "note": "private, no-store"
+    },
+    {
+      "step": "csrf: cross-origin POST rejected",
+      "ok": true,
+      "note": "403"
+    },
+    {
+      "step": "csrf: text/plain body rejected",
+      "ok": true,
+      "note": "415"
+    },
+    {
+      "step": "send: no confirmation token -> 409",
+      "ok": true,
+      "note": "This send has no confirmation from its preview. Review it again, then slide."
+    },
+    {
+      "step": "preview: allowlisted 0.01 needs no phrase and returns a token",
+      "ok": true,
+      "note": "ok"
+    },
+    {
+      "step": "send: real testnet transfer",
+      "ok": true,
+      "note": "7Py477omDvYMysjMxYBo5GeiTLYnhVDuoSg8tb2RSEBv",
+      "hash": "7Py477omDvYMysjMxYBo5GeiTLYnhVDuoSg8tb2RSEBv",
+      "explorerUrl": "https://testnet.nearblocks.io/txns/7Py477omDvYMysjMxYBo5GeiTLYnhVDuoSg8tb2RSEBv"
+    },
+    {
+      "step": "send: token replay -> 409",
+      "ok": true,
+      "note": "This confirmation was already used. Review the send again."
+    },
+    {
+      "step": "threshold: 0.2 to an allowlisted contact needs the phrase",
+      "ok": true,
+      "note": "The amount is at or above your extra-confirm threshold of 0.2 NEAR."
+    },
+    {
+      "step": "policy: allow without phrase -> 403",
+      "ok": true,
+      "note": "Type the confirm phrase to add someone to your allowlist."
+    },
+    {
+      "step": "policy: visitor stop",
+      "ok": true
+    },
+    {
+      "step": "stop: preview blocked while stopped",
+      "ok": true,
+      "note": "The kill switch is on. Sending is stopped."
+    },
+    {
+      "step": "policy: resume without phrase -> 403",
+      "ok": true
+    },
+    {
+      "step": "policy: resume with phrase",
+      "ok": true
+    },
+    {
+      "step": "agent: rule created for this visitor",
+      "ok": true
+    },
+    {
+      "step": "agent: two concurrent runs pay the rule exactly once",
+      "ok": true,
+      "note": "ran=1",
+      "hash": "jgPVdXZaVhgqaxGdbnTVE3rEhJFE8Dq49tVi2QfxZ2G",
+      "explorerUrl": "https://testnet.nearblocks.io/txns/jgPVdXZaVhgqaxGdbnTVE3rEhJFE8Dq49tVi2QfxZ2G"
+    },
+    {
+      "step": "agent: status shows only this visitor's rules",
+      "ok": true
+    },
+    {
+      "step": "agent: anonymous status -> 401",
+      "ok": true
+    }
+  ],
+  "note": "app-v4/scripts/e2e-http.mjs against the local production build, demo account = a throwaway testnet account. No key material is recorded here."
+}

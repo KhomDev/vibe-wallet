@@ -1,0 +1,72 @@
+{
+  "network": "mainnet",
+  "rpc": "https://free.rpc.fastnear.com",
+  "account": "hlpok1lad.tg",
+  "recipient": "gateway.hlpok1lad.tg",
+  "at": "2026-11-14T01:03:53.123Z",
+  "signed": 0,
+  "broadcast": 0,
+  "failed": 0,
+  "checks": [
+    {
+      "step": "RPC is NEAR mainnet",
+      "ok": true,
+      "detail": "https://free.rpc.fastnear.com reports chain_id mainnet, protocol 88"
+    },
+    {
+      "step": "shared-demo signer refuses mainnet",
+      "ok": true,
+      "detail": "The shared demo account only signs on testnet. This deployment is configured for another network, so demo sends are off."
+    },
+    {
+      "step": "account and recipient exist on mainnet",
+      "ok": true,
+      "detail": "hlpok1lad.tg: 2.125373 NEAR available; gateway.hlpok1lad.tg: exists; fee estimate 0.00004463 NEAR"
+    },
+    {
+      "step": "0.01 NEAR to the allowlisted recipient: allowed, slide only",
+      "ok": true,
+      "detail": "needsPhrase=false"
+    },
+    {
+      "step": "0.05 NEAR (at the extra-confirm threshold): needs the phrase",
+      "ok": true,
+      "detail": "The amount is at or above your extra-confirm threshold of 0.05 NEAR."
+    },
+    {
+      "step": "0.06 NEAR: over the per-send cap, blocked",
+      "ok": true,
+      "detail": "This is above your per-transaction limit of 0.05 NEAR."
+    },
+    {
+      "step": "unknown recipient with allowlist-only: blocked",
+      "ok": true,
+      "detail": "Allowlist-only is on, and this recipient is not on it."
+    },
+    {
+      "step": "account has a full-access key the signer can verify",
+      "ok": true,
+      "detail": "1 full-access and 0 other key(s) on chain"
+    },
+    {
+      "step": "reconcile A4yAYiZC…: landed",
+      "ok": true,
+      "detail": "SUCCESS -> gateway.hlpok1lad.tg"
+    },
+    {
+      "step": "reconcile 8w76GGqB…: landed",
+      "ok": true,
+      "detail": "SUCCESS -> wrap.near"
+    },
+    {
+      "step": "reconcile AbmBP4bS…: landed",
+      "ok": true,
+      "detail": "SUCCESS -> wrap.near"
+    },
+    {
+      "step": "NEAR Intents 1Click quote with dry: true",
+      "ok": true,
+      "detail": "0.03 NEAR -> about 0.102707 USDC (QUOTE ONLY. NEAR Intents execution is mainnet-only. This is a dry quote: no deposit address was created and nothing was signed or sent.)"
+    }
+  ]
+}

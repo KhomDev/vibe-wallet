@@ -2,6 +2,50 @@
 
 All times below are in Europe/Budapest (CET, UTC+1). Date: 13 November 2026.
 
+## 14 November 2026: security remediation
+
+After the fixes recorded in [SECURITY-REVIEW-2026-11-14.md](SECURITY-REVIEW-2026-11-14.md):
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 79/79 passed |
+| `npm run typecheck` | 0 errors |
+| `npm run lint` | 0 errors, 6 warnings (`@next/next/no-img-element` on the landing page) |
+| `npm run build` | Passed (middleware 39.6 kB) |
+| Local production build against testnet, `scripts/e2e-http.mjs` | 19/19 ([evidence](evidence/testnet-e2e-2026-11-14.json)) |
+| NEAR mainnet, `npm run mainnet:check` (no key, nothing signed) | 12/12 ([evidence](evidence/mainnet-check-2026-11-14.json)) |
+| Playwright | Not re-run: Playwright browsers are not installed on the machine used for this change. `e2e/production.spec.ts` now confirms with four right-arrow presses, since Enter no longer confirms |
+
+New tests:
+
+- `tests/demo-routes.test.ts` drives the real route handlers (`demo/session`, `demo/send`, `demo/policy`, `agent/rules`, `agent/run`, `agent/status`, `cron/agent`) against an in-memory compare-and-swap store and a stub JSON-RPC that decodes every signed transaction (`tests/helpers/rpc-stub.ts`). It covers the single-use confirmation token, 9 parallel sends against the 2 NEAR daily limit, 8 visitors in parallel against a global cap, the visitor-id mint limit, per-visitor policy isolation, the operator-only global kill switch, no NEAR Social transaction on visitor routes, agent rule ownership, two concurrent agent runs paying once, the agent respecting the global cap, the testnet-only demo signer, and cron auth.
+- `tests/security-units.test.ts`: the cross-site/content-type guard, client-IP derivation (Vercel header, right-most hop, IPv6 /64), cron secret comparison, token binding and expiry, secret detection, vault v2 and v1 compatibility, Unicode phrases, look-alike and hidden-character account ids, whole-token recipient and amount matching, negation, strict voice yes/no, policy loosening detection, the rate limiter.
+- `tests/demo-limits.test.ts` was rewritten for reservations: per-visitor and per-network budgets, the global cap with fees, release, and 12 concurrent reservations against one store (exactly 6 commit).
+- `tests/routes.test.ts`: the intent route's per-client limit (25 calls give 20 model calls and five 429s) and pasted-secret refusal.
+- `tests/intent.test.ts`: "Every Friday send..." with the cadence first is a schedule, never an immediate send.
+- `tests/history-and-safety.test.ts`: the signer-isolation walk now works on Windows paths too.
+
+### Testnet end-to-end (local production build)
+
+`next start` with a throwaway testnet demo account, driven over HTTP by `scripts/e2e-http.mjs`:
+
+| Step | Result |
+| --- | --- |
+| Page headers | CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY` |
+| Session | Visitor cookie minted; `network: testnet`; `Cache-Control: private, no-store` |
+| Cross-origin POST / `text/plain` body | 403 / 415 |
+| Send without a token | 409 |
+| Preview, then send 0.01 NEAR | Real transfer [7Py477om...](https://testnet.nearblocks.io/txns/7Py477omDvYMysjMxYBo5GeiTLYnhVDuoSg8tb2RSEBv); token replay 409 |
+| 0.2 NEAR to the allowlisted friend | Needs the phrase (threshold) |
+| Allow without phrase / stop / resume without phrase / resume with phrase | 403 / stopped (sends blocked) / 403 / resumed |
+| Agent: rule created, two concurrent "Run agent now" | One payment, [jgPVdXZa...](https://testnet.nearblocks.io/txns/jgPVdXZaVhgqaxGdbnTVE3rEhJFE8Dq49tVi2QfxZ2G) |
+| Agent status: own rules only / anonymous | 1 rule / 401 |
+
+Loading the app in a browser with the new CSP showed no CSP violations. The only console error was a 429
+from the public NearBlocks API on the history request, which the app already handles.
+
+The sections below are the earlier runs and are kept as recorded.
+
 ## How to run
 
 From `app-v4/`:

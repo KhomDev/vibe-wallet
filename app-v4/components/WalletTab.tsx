@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { explorerTxUrl } from "@/lib/config";
+import { explorerTxUrl, IS_MAINNET } from "@/lib/config";
 import type { HistoryItem } from "@/lib/history";
 import { getProvider } from "@/lib/near/read";
 import type { KeySummary } from "@/lib/near/read";
@@ -12,10 +12,15 @@ import type { QuoteView } from "@/lib/client";
 import { CountUp } from "./CountUp";
 import { SafetyPanel } from "./SafetyPanel";
 
-const TOKENS = [
-  { symbol: "USDC", subtitle: "USD Coin", contract: "usdc.fakes.testnet", decimals: 6, mark: "usdc" },
-  { symbol: "ETH", subtitle: "Ether", contract: "eth.fakes.testnet", decimals: 18, mark: "eth" },
-] as const;
+const TOKENS = IS_MAINNET
+  ? [
+      { symbol: "USDC", subtitle: "USD Coin", contract: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", decimals: 6, mark: "usdc" },
+      { symbol: "ETH", subtitle: "Ether", contract: "eth.bridge.near", decimals: 18, mark: "eth" },
+    ] as const
+  : [
+      { symbol: "USDC", subtitle: "USD Coin", contract: "usdc.fakes.testnet", decimals: 6, mark: "usdc" },
+      { symbol: "ETH", subtitle: "Ether", contract: "eth.fakes.testnet", decimals: 18, mark: "eth" },
+    ] as const;
 
 export function WalletTab({
   accountId,

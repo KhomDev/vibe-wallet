@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { APK_PATH, APP_NAME, SITE_URL } from "@/lib/site";
 import { MAINNET_PROOF, mainnetTxUrl } from "@/lib/mainnet-proof";
+import { IS_MAINNET, NETWORK_LABEL, TESTNET_DEMO_URL } from "@/lib/config";
 
 const features = [
   {
@@ -19,7 +20,9 @@ const features = [
   },
   {
     title: "NEAR Intents",
-    body: "Ask to swap NEAR to USDT, USDC, or ETH and get a live quote. Quotes stay quote-only on testnet, so nothing is signed by accident.",
+    body: IS_MAINNET
+      ? "Say \"swap 0.03 NEAR to USDC\" and get a verified NEAR Intents quote. Slide to confirm and your own wallet signs a real swap, under your limits."
+      : "Ask to swap NEAR to USDT, USDC, or ETH and get a live quote. Quotes stay quote-only on testnet, so nothing is signed by accident.",
     img: "/marketing/wallet.png",
     alt: "Wallet tab with send, receive, and swap",
   },
@@ -48,15 +51,28 @@ export function LandingPage() {
 
       <section className="lp-hero">
         <div className="lp-hero-copy">
-          <p className="lp-kicker">Personal voice wallet · NEAR testnet</p>
+          <p className="lp-kicker">Personal voice wallet · {NETWORK_LABEL}</p>
           <h1>{APP_NAME}</h1>
           <p className="lp-lead">
-            Talk to the orb, then slide to confirm a real NEAR testnet payment. Limits, an allowlist, and a kill switch stay in your hands. Try the shared demo — no wallet setup needed.
+            {IS_MAINNET
+              ? "Talk to the orb, then slide to confirm real NEAR mainnet payments and NEAR Intents swaps. Your own wallet signs; limits, an allowlist, and a kill switch stay in your hands."
+              : "Talk to the orb, then slide to confirm a real NEAR testnet payment. Limits, an allowlist, and a kill switch stay in your hands. Try the shared demo — no wallet setup needed."}
           </p>
           <div className="lp-actions">
-            <Link className="lp-btn lp-btn-primary" href="/?app=1&demo=1">
-              Try a demo account
-            </Link>
+            {IS_MAINNET ? (
+              <Link className="lp-btn lp-btn-primary" href="/?app=1">
+                Connect your NEAR wallet
+              </Link>
+            ) : (
+              <Link className="lp-btn lp-btn-primary" href="/?app=1&demo=1">
+                Try a demo account
+              </Link>
+            )}
+            {IS_MAINNET && TESTNET_DEMO_URL ? (
+              <a className="lp-btn lp-btn-ghost" href={`${TESTNET_DEMO_URL.replace(/\/$/, "")}/?app=1&demo=1`}>
+                Free testnet demo
+              </a>
+            ) : null}
             <a className="lp-btn lp-btn-ghost" href={APK_PATH}>
               Download APK
             </a>
@@ -70,7 +86,7 @@ export function LandingPage() {
             </div>
           </div>
         </div>
-        <Link className="lp-hero-art" href="/?app=1&demo=1" aria-label="Open the shared demo account">
+        <Link className="lp-hero-art" href={IS_MAINNET ? "/?app=1" : "/?app=1&demo=1"} aria-label={IS_MAINNET ? "Open the wallet" : "Open the shared demo account"}>
           <figure className="lp-phone lp-phone-main">
             <img src="/marketing/orb.png" alt="Vibe Wallet on a phone, showing the talking orb" />
           </figure>
@@ -97,7 +113,7 @@ export function LandingPage() {
 
       <section className="lp-install" id="mainnet-proof">
         <h2>Mainnet proof</h2>
-        <p>The app and the shared demo run on testnet by default. The same signer code and a real NEAR Intents swap were run on NEAR mainnet:</p>
+        <p>{IS_MAINNET ? "This deployment runs on NEAR mainnet. Real transactions through the same signer and swap code:" : "The app and the shared demo run on testnet by default. The same signer code and a real NEAR Intents swap were run on NEAR mainnet:"}</p>
         <ul>
           {[MAINNET_PROOF.send, MAINNET_PROOF.swapDeposit, MAINNET_PROOF.swapSettlement].map((tx) => (
             <li key={tx.hash}>
@@ -118,7 +134,7 @@ export function LandingPage() {
               <li>Open the downloaded file. If Android blocks it, go to Settings and allow this browser to install unknown apps.</li>
               <li>On some phones that is Settings → Apps → Special app access → Install unknown apps, then turn on your browser.</li>
               <li>Tap Install, then Open. Vibe Wallet launches in its own window.</li>
-              <li>Testnet NEAR has no monetary value. Only use this build with a testnet account.</li>
+              <li>{IS_MAINNET ? "This build runs on NEAR mainnet: real NEAR. Every send and swap is signed in your own wallet, after you confirm." : "Testnet NEAR has no monetary value. Only use this build with a testnet account."}</li>
             </ol>
             <a className="lp-btn lp-btn-primary" href={APK_PATH}>Download APK</a>
           </article>
@@ -148,7 +164,7 @@ export function LandingPage() {
           <img src="/icons/icon-192.png" alt="" width={28} height={28} />
           <strong>{APP_NAME}</strong>
         </div>
-        <p>Personal voice wallet for NEAR testnet. You confirm every send.</p>
+        <p>Personal voice wallet for {NETWORK_LABEL}. You confirm every send.</p>
         <Link href="/?app=1">Open web app on desktop</Link>
       </footer>
     </div>

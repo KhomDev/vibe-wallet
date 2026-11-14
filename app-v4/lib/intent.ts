@@ -334,7 +334,7 @@ export function acceptModelIntent(message: string, intent: WalletIntent): Wallet
   return intent;
 }
 
-export const INTENT_SYSTEM_PROMPT = `You classify requests for Vibe Wallet, a personal NEAR testnet voice wallet.
+export const INTENT_SYSTEM_PROMPT = `You classify requests for Vibe Wallet, a personal NEAR ${NETWORK_ID} voice wallet.
 You never ask for, see, or return private keys, seed phrases, or passphrases.
 Return one JSON object and nothing else.
 Allowed shapes:

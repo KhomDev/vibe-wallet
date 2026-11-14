@@ -5,7 +5,7 @@ import { suggestTestnetAccountId } from "@/lib/account-id";
 import { shortAccount } from "@/lib/allowlist";
 import { addAgentRule, previewDemoSend, requestQuote, resolveIntent, runAgentNow, sendDemoTransfer, updateDemoPolicy, fetchAgentStatus, type IntentSource, type QuoteView } from "@/lib/client";
 import type { AgentLog, AgentRule } from "@/lib/agent-types";
-import { explorerAccountUrl, explorerTxUrl, IS_MAINNET, NETWORK_ID, SCOPED_CONTRACT_ID, SWAP_MAX_NEAR, WRAP_CONTRACT_ID } from "@/lib/config";
+import { EXAMPLE_ACCOUNT, explorerAccountUrl, explorerTxUrl, IS_MAINNET, NETWORK_ID, SCOPED_CONTRACT_ID, SWAP_MAX_NEAR, WRAP_CONTRACT_ID } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { explainTransaction, mergeHistory, type HistoryItem } from "@/lib/history";
 import type { WalletIntent } from "@/lib/intent";
@@ -46,7 +46,7 @@ async function view<T>(contractId: string, method: string, args: Record<string, 
 const PENDING_SEND_MS = 15 * 60 * 1000;
 const EXAMPLES = [
   "What's my balance?",
-  "Send 0.5 NEAR to bob.testnet",
+  `Send 0.5 NEAR to ${EXAMPLE_ACCOUNT}`,
   "Swap 1 NEAR to USDT",
   "Explain my last transaction",
   "Show my history",
@@ -456,7 +456,7 @@ export function WalletApp() {
     if (!accountId) throw new Error("Unlock the wallet first.");
     const next = await readBalance(accountId);
     setBalance(next);
-    if (!next) throw new Error("The account is not visible on testnet.");
+    if (!next) throw new Error(`The account is not visible on ${NETWORK_ID}.`);
     return next;
   }
 
@@ -554,7 +554,7 @@ export function WalletApp() {
       say(
         list.length
           ? `you can send to ${list.length} ${list.length === 1 ? "account" : "accounts"}, up to ${current.perTxNear} NEAR a pop.`
-          : `allowlist's empty, say "allow name.testnet" to add someone.`,
+          : `allowlist's empty, say "allow name.${IS_MAINNET ? "near" : "testnet"}" to add someone.`,
         nextSource,
         nextNote,
       );
@@ -658,7 +658,7 @@ export function WalletApp() {
         accountExists(intent.recipient),
         estimateTransferFee(false),
       ]);
-      if (!nextBalance) throw new Error("Your account is not visible on testnet.");
+      if (!nextBalance) throw new Error(`Your account is not visible on ${NETWORK_ID}.`);
       setBalance(nextBalance);
       const spentToday = loadSpend(current.accountId);
       setSpent(spentToday);
@@ -1266,7 +1266,7 @@ export function WalletApp() {
   };
   const sendExample = demo && session.demoRecipient
     ? `Send 0.1 NEAR to ${session.demoRecipient}`
-    : vault?.other ? `Send 0.2 NEAR to ${vault.other.accountId}` : "Send 0.5 NEAR to bob.testnet";
+    : vault?.other ? `Send 0.2 NEAR to ${vault.other.accountId}` : `Send 0.5 NEAR to ${EXAMPLE_ACCOUNT}`;
   const exampleChips: { label: string; text: string }[] = demo && session.demoRecipient ? [
     { label: "Send 0.1 NEAR to demo friend", text: sendExample },
     { label: "What's my balance?", text: "What's my balance?" },

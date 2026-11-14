@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { normalizeNewTestnetName, suggestTestnetAccountId } from "@/lib/account-id";
-import { IS_MAINNET, NETWORK_ID } from "@/lib/config";
+import { IS_MAINNET, NETWORK_ID, TESTNET_DEMO_URL } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { createFundedAccount } from "@/lib/near/read";
 import { connectWallet, connectedAccount, listWallets, type WalletOption } from "@/lib/near/wallet-connector";
@@ -37,7 +37,8 @@ export function SetupScreen({ onReady, onDemo, onConnected }: {
   const [error, setError] = useState<string | null>(null);
   const [wallets, setWallets] = useState<WalletOption[] | null>(null);
   const [connected, setConnected] = useState<{ accountId: string; walletId: string } | null>(null);
-  const [autoDemo] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
+  // A mainnet build has no shared demo, so an old ?demo=1 link just opens the wallet connect screen.
+  const [autoDemo] = useState(() => !IS_MAINNET && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1");
   const [demoBusy, setDemoBusy] = useState(autoDemo);
   const [busy, setBusy] = useState(false);
   const levelRef = useRef(0);
@@ -186,7 +187,7 @@ export function SetupScreen({ onReady, onDemo, onConnected }: {
   }
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("demo") === "1") {
+    if (autoDemo) {
       void tryDemo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- start the shared demo once when deep-linked from the landing
@@ -238,7 +239,12 @@ export function SetupScreen({ onReady, onDemo, onConnected }: {
       <div className="orb-wrap"><HoloOrb state="idle" levelRef={levelRef} onPress={() => undefined} /></div>
       <p className="caption">Just talk to me</p>
       <p className="text-center text-sm text-muted">Connect the NEAR wallet you already use. It keeps your key and shows its own confirmation; Vibe Wallet checks your limits before it asks. No private key is ever typed or pasted here.</p>
-      {IS_MAINNET ? null : (
+      {IS_MAINNET ? (
+        <p className="text-center text-sm text-muted" data-testid="mainnet-note">
+          NEAR mainnet: real NEAR, signed in your own wallet.
+          {TESTNET_DEMO_URL ? <> Just looking? <a className="underline" href={`${TESTNET_DEMO_URL.replace(/\/$/, "")}/?app=1&demo=1`}>Try the free testnet demo</a>.</> : null}
+        </p>
+      ) : (
         <>
           <button className="btn btn-primary" type="button" data-testid="try-demo" disabled={demoBusy} onClick={() => void tryDemo()}>
             {demoBusy ? "Opening demo…" : "Try a demo account"}

@@ -23,6 +23,18 @@ export const DEFAULT_RPC: Record<NetworkId, string> = {
 export const RPC_URL =
   process.env.NEXT_PUBLIC_NEAR_RPC_URL || DEFAULT_RPC[NETWORK_ID];
 
+/** Human label for the network, used in UI copy ("NEAR mainnet" / "NEAR testnet"). */
+export const NETWORK_LABEL = `NEAR ${NETWORK_ID}`;
+
+/** An example account name for this network, for placeholders and suggestion chips. */
+export const EXAMPLE_ACCOUNT = IS_MAINNET ? "bob.near" : "bob.testnet";
+
+/**
+ * Optional link to a free testnet build with the shared demo account. A mainnet build has no shared
+ * demo (anonymous visitors never spend real NEAR), so it can point visitors here instead.
+ */
+export const TESTNET_DEMO_URL = (process.env.NEXT_PUBLIC_TESTNET_DEMO_URL || "").trim();
+
 export const FAUCET_URL = "https://helper.testnet.near.org/account";
 
 export const INTENTS_API_URL =

@@ -1,6 +1,6 @@
 "use client";
 
-import { explorerTxUrl } from "@/lib/config";
+import { explorerTxUrl, NETWORK_ID } from "@/lib/config";
 import type { IntentSource, QuoteView } from "@/lib/client";
 import { phraseMatches, type SendCheck } from "@/lib/policy";
 
@@ -125,14 +125,14 @@ export function ActionCards({
             <>
               <h2 className="text-2xl font-semibold">Add a scheduled payment</h2>
               <p>Send {pending.amountNear} NEAR to <span className="mono break-all">{pending.recipient}</span> {pending.cadence === "daily" ? "every day" : "every Friday"}.</p>
-              <p className="text-sm text-muted">The agent will send a real testnet transfer when the rule is due, unless the kill switch or a limit blocks it.</p>
+              <p className="text-sm text-muted">The agent will send a real {NETWORK_ID} transfer when the rule is due, unless the kill switch or a limit blocks it.</p>
             </>
           ) : null}
           {pending.kind === "price" ? (
             <>
               <h2 className="text-2xl font-semibold">Add a price-trigger rule</h2>
               <p>If NEAR drops below ${pending.belowUsd}, quote a swap of {pending.amountNear} NEAR to {pending.toSymbol}.</p>
-              <p className="banner banner-warn">Quote only. NEAR Intents have no testnet execution, so the agent will not swap.</p>
+              <p className="banner banner-warn">Quote only. Price rules fetch a quote; the agent never swaps by itself.</p>
             </>
           ) : null}
           {pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" && pending.kind !== "scoped_key" ? <p>Enter the confirm phrase, then click Confirm. This does not move NEAR by itself.</p> : null}
@@ -155,7 +155,7 @@ export function ActionCards({
           <p className="banner banner-ok">Sent {receipt.amountNear} NEAR to <span className="mono break-all">{receipt.recipient}</span>.</p>
           <p>Network fee: {receipt.feeNear} NEAR</p>
           <p className="mono break-all">{receipt.hash}</p>
-          <a className="underline" href={explorerTxUrl(receipt.hash)} target="_blank" rel="noreferrer">View on testnet explorer</a>
+          <a className="underline" href={explorerTxUrl(receipt.hash)} target="_blank" rel="noreferrer">View on {NETWORK_ID} explorer</a>
           <button className="btn btn-ghost" type="button" onClick={onDismissReceipt}>Dismiss receipt</button>
         </section>
       ) : null}

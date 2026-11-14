@@ -1,5 +1,5 @@
 import { Account, JsonRpcProvider, KeyPair, keyToImplicitAddress, type KeyPairString } from "near-api-js";
-import { FAUCET_URL, NETWORK_ID, RPC_URL, SCOPED_CONTRACT_ID, SCOPED_METHODS, historyUrl } from "../config";
+import { FALLBACK_RPC, FAUCET_URL, NETWORK_ID, RPC_URL, SCOPED_CONTRACT_ID, SCOPED_METHODS, historyUrl } from "../config";
 import { mapIndexerTransactions, type HistoryItem } from "../history";
 import { formatNear } from "../units";
 
@@ -26,6 +26,22 @@ let provider: JsonRpcProvider | null = null;
 export function getProvider(): JsonRpcProvider {
   if (!provider) provider = new JsonRpcProvider({ url: RPC_URL }, { retries: 3, wait: 400, backoff: 1.5 });
   return provider;
+}
+
+let fallbackProvider: JsonRpcProvider | null = null;
+
+/** A view call that falls back to a second RPC when the primary fails (read-only; never used to send). */
+export async function viewWithFallback(contractId: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+  try {
+    return await getProvider().callFunction({ contractId, method, args });
+  } catch (err) {
+    if (!fallbackProvider) fallbackProvider = new JsonRpcProvider({ url: FALLBACK_RPC[NETWORK_ID] }, { retries: 2, wait: 400, backoff: 1.5 });
+    try {
+      return await fallbackProvider.callFunction({ contractId, method, args });
+    } catch {
+      throw err;
+    }
+  }
 }
 
 export function generateEd25519(): { secretKey: string; publicKey: string } {

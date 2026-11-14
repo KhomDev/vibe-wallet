@@ -20,6 +20,12 @@ export const DEFAULT_RPC: Record<NetworkId, string> = {
   mainnet: "https://free.rpc.fastnear.com",
 };
 
+/** Second RPC for read-only views when the primary one fails or rate-limits (both are allowed by the CSP). */
+export const FALLBACK_RPC: Record<NetworkId, string> = {
+  testnet: "https://archival-rpc.testnet.fastnear.com",
+  mainnet: "https://archival-rpc.mainnet.fastnear.com",
+};
+
 export const RPC_URL =
   process.env.NEXT_PUBLIC_NEAR_RPC_URL || DEFAULT_RPC[NETWORK_ID];
 

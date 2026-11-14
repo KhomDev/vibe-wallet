@@ -3,11 +3,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { explorerTxUrl, IS_MAINNET } from "@/lib/config";
 import type { HistoryItem } from "@/lib/history";
-import { getProvider } from "@/lib/near/read";
+import { viewWithFallback } from "@/lib/near/read";
+import { INTENTS_CONTRACT_MAINNET, loadingBalances, readTokenBalances, type TokenBalance } from "@/lib/token-balances";
 import type { KeySummary } from "@/lib/near/read";
 import type { StoredPolicy } from "@/lib/policy";
 import { haptic, pop } from "@/lib/sounds";
-import { formatUnits } from "@/lib/units";
 import type { QuoteView } from "@/lib/client";
 import { CountUp } from "./CountUp";
 import { SafetyPanel } from "./SafetyPanel";
@@ -95,34 +95,20 @@ export function WalletTab({
   /** Wallet Selector module id when a wallet is connected. */
   connectedWallet?: string | null;
 }) {
-  const [tokens, setTokens] = useState<{ symbol: string; subtitle: string; amount: string; mark: string }[]>(
-    TOKENS.map((token) => ({ symbol: token.symbol, subtitle: token.subtitle, amount: "0.00", mark: token.mark })),
-  );
+  const [tokens, setTokens] = useState<TokenBalance[]>(() => loadingBalances(TOKENS));
+  const [tokenReload, setTokenReload] = useState(0);
   const usd = nearPrice === null ? null : availableNear * nearPrice;
 
+  // Re-read token balances when the account changes, after new activity (a swap lands), or on retry.
+  const latestHash = history[0]?.hash ?? "";
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      const next = [];
-      for (const token of TOKENS) {
-        let amount = "0.00";
-        try {
-          const raw = await getProvider().callFunction<string>({
-            contractId: token.contract,
-            method: "ft_balance_of",
-            args: { account_id: accountId },
-          });
-          const digits = String(raw ?? "0").replace(/"/g, "");
-          if (/^\d+$/.test(digits)) amount = formatUnits(BigInt(digits), token.decimals, 2);
-        } catch {
-          amount = "0.00";
-        }
-        next.push({ symbol: token.symbol, subtitle: token.subtitle, amount, mark: token.mark });
-      }
+    setTokens((prev) => (prev.some((t) => t.status === "ok") ? prev : loadingBalances(TOKENS)));
+    void readTokenBalances(accountId, TOKENS, viewWithFallback, IS_MAINNET ? INTENTS_CONTRACT_MAINNET : null).then((next) => {
       if (!cancelled) setTokens(next);
-    })();
+    });
     return () => { cancelled = true; };
-  }, [accountId]);
+  }, [accountId, latestHash, tokenReload]);
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-3 pb-16 min-w-0">
@@ -169,7 +155,17 @@ export function WalletTab({
         <article className="glass token" key={token.symbol}>
           <span className={`mark ${token.mark}`}>{token.symbol === "ETH" ? "◆" : "$"}</span>
           <div><strong>{token.symbol}</strong><em>{token.subtitle}</em></div>
-          <div className="right"><strong>{hidden ? "••••" : `${token.amount} ${token.symbol}`}</strong><small>{token.symbol === "USDC" && !hidden ? `$${token.amount}` : ""}</small></div>
+          <div className="right">
+            {token.status === "loading" ? <strong aria-busy="true">… {token.symbol}</strong> : null}
+            {token.status === "error" ? (
+              <button className="underline text-sm" type="button" onClick={() => setTokenReload((n) => n + 1)} data-testid={`token-retry-${token.symbol}`}>Couldn&apos;t load · retry</button>
+            ) : null}
+            {token.status === "ok" ? <strong data-testid={`token-${token.symbol}`}>{hidden ? "••••" : `${token.wallet} ${token.symbol}`}</strong> : null}
+            <small>
+              {token.status === "ok" && token.symbol === "USDC" && !hidden ? `$${token.wallet}` : ""}
+              {token.intents && !hidden ? <span className="block" data-testid={`token-intents-${token.symbol}`}>+ {token.intents} in NEAR Intents</span> : null}
+            </small>
+          </div>
         </article>
       ))}
       {quote ? <p className="banner banner-warn">{quote.label} {quote.amountInFormatted} {quote.originSymbol} → {quote.amountOutFormatted} {quote.destinationSymbol}</p> : null}

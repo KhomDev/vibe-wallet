@@ -7,9 +7,9 @@
 **Talk to your NEAR wallet. NEAR AI turns your words into a proposed transaction, limits written in code
 check it, and nothing is signed until you confirm: in your own wallet, or with a slide.**
 
-[![Live demo](https://img.shields.io/badge/Live_demo-vibe--wallet--flame.vercel.app-000000?style=flat-square&logo=vercel&logoColor=white)](https://vibe-wallet-flame.vercel.app)
+[![Live on mainnet](https://img.shields.io/badge/Live_on_mainnet-vibe--wallet--flame.vercel.app-000000?style=flat-square&logo=vercel&logoColor=white)](https://vibe-wallet-flame.vercel.app)
 [![Android APK](https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square&logo=android&logoColor=white)](https://vibe-wallet-flame.vercel.app/download/vibe-wallet.apk)
-[![NEAR](https://img.shields.io/badge/NEAR-testnet_%2B_mainnet-00EC97?style=flat-square&logo=near&logoColor=black)](#mainnet)
+[![NEAR](https://img.shields.io/badge/NEAR-live_on_mainnet-00EC97?style=flat-square&logo=near&logoColor=black)](#mainnet)
 [![NEAR AI Cloud](https://img.shields.io/badge/NEAR_AI_Cloud-Whisper_%2B_GLM-0A84FF?style=flat-square)](#near-technology-used)
 [![NEAR Intents](https://img.shields.io/badge/NEAR_Intents-executed_swaps-7B61FF?style=flat-square)](#executed-near-intents-swaps-mainnet)
 [![CI](https://img.shields.io/github/actions/workflow/status/KhomDev/vibe-wallet/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/KhomDev/vibe-wallet/actions)
@@ -17,7 +17,7 @@ check it, and nothing is signed until you confirm: in your own wallet, or with a
 
 Built at **NEAR HACKATHON 2026**
 
-[Live demo](https://vibe-wallet-flame.vercel.app) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Mainnet proof](#mainnet-proof) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
+[Live app (mainnet)](https://vibe-wallet-flame.vercel.app) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Mainnet proof](#mainnet-proof) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
 
 </div>
 
@@ -25,31 +25,31 @@ Built at **NEAR HACKATHON 2026**
 
 ## Screenshots
 
-Live demo: [vibe-wallet-flame.vercel.app](https://vibe-wallet-flame.vercel.app). Captured 14 Nov 2026 (Europe/Budapest).
+Live on **NEAR mainnet**: [vibe-wallet-flame.vercel.app](https://vibe-wallet-flame.vercel.app). Captured 14 Nov 2026 (Europe/Budapest) from the production deployment, connected (watch-only, nothing signed) as `hlpok1lad.tg`.
 
-<p align="center"><img src="docs/screenshots/landing.png" alt="Vibe Wallet marketing landing with the talking orb and a phone QR code" width="900"></p>
+<p align="center"><img src="docs/screenshots/landing.png" alt="Vibe Wallet landing: personal voice wallet on NEAR mainnet, Connect your NEAR wallet" width="900"></p>
 
-Marketing landing, with the talking orb and a QR code for the phone.
+Landing page: NEAR mainnet, **Connect your NEAR wallet**, and a QR code for the phone.
 
-<p align="center"><img src="docs/screenshots/demo-orb.png" alt="Shared demo account on the Orb tab, ready to talk, type, or tap a suggestion" width="900"></p>
+<p align="center"><img src="docs/screenshots/mainnet-connect.png" alt="Connect a NEAR mainnet wallet: HOT Wallet, MyNearWallet, Intear Wallet" width="900"></p>
 
-Shared demo account (testnet) on the Orb tab: voice, type, or tap a suggestion, then confirm.
+Connect a NEAR mainnet wallet (HOT, MyNearWallet, Intear). Your wallet keeps the key and approves every payment.
 
-<p align="center"><img src="docs/screenshots/send-confirm.png" alt="Slide-to-confirm card for sending 0.1 NEAR from the demo account" width="900"></p>
+<p align="center"><img src="docs/screenshots/mainnet-orb.png" alt="Orb tab with the real mainnet balance and suggestions" width="900"></p>
 
-A real preview of **send 0.1 NEAR** on the shared demo account, with slide-to-confirm. Nothing was signed in this capture.
+The Orb tab with the account's real mainnet balance: talk, type, or tap a suggestion.
 
-<p align="center"><img src="docs/screenshots/wallet.png" alt="Wallet tab showing the demo account balance, Send Receive Swap, and token list" width="900"></p>
+<p align="center"><img src="docs/screenshots/mainnet-swap-card.png" alt="Swap on NEAR mainnet card: 0.03 NEAR to about 0.096 USDC via NEAR Intents" width="900"></p>
 
-Wallet tab on the shared demo account, with the testnet balance, Send / Receive / Swap, and token list.
+*"Swap 0.03 NEAR to USDC"* → a verified, executable NEAR Intents quote on mainnet, delivered to and refunded to your own account. Type the phrase, slide, and approve in your wallet.
 
-<p align="center"><img src="docs/screenshots/safety.png" alt="Safety panel with caps, allowlist, kill switch, and recent demo sends" width="900"></p>
+<p align="center"><img src="docs/screenshots/mainnet-wallet.png" alt="Wallet tab with NEAR, USDC and ETH balances on mainnet" width="900"></p>
 
-Safety controls on the demo account: caps, allowlist, kill switch, and recent demo sends.
+Wallet tab: NEAR, USDC and ETH balances read from mainnet, with Send / Receive / Swap.
 
-<p align="center"><img src="docs/screenshots/demo-mobile.png" alt="Vibe Wallet mobile Orb screen" width="390"></p>
+<p align="center"><img src="docs/screenshots/mainnet-mobile-wallet.png" alt="Vibe Wallet mobile wallet tab on mainnet" width="390"></p>
 
-Mobile Orb screen (390×844) of the shared demo account.
+Mobile (390×844).
 
 ## Promo video
 
@@ -223,9 +223,9 @@ cd app-v4 && npm install && NEXT_PUBLIC_NEAR_NETWORK=mainnet npm run build && NE
 
 ## Try it in 60 seconds
 
-The live demo runs on **testnet** (no real money, no wallet, no sign-up). Each step is *do X → see Y*.
+The production site runs on **mainnet** with your own wallet (see [Mainnet](#mainnet)). These steps use the free shared demo of a **testnet build** (no real money, no wallet, no sign-up): run `cd app-v4 && npm install && npm run dev` with the demo variables from `.env.example`, or deploy a preview. Each step is *do X → see Y*.
 
-1. **Open** https://vibe-wallet-flame.vercel.app/?app=1 (or scan the QR code on the desktop landing page) → **see** the orb screen.
+1. **Open** the testnet build at `/?app=1` → **see** the orb screen.
 2. **Tap** **Try a demo account** → **see** the orb greet you with the demo account's testnet balance.
 3. **Tap** **What's my balance?** (or tap the orb and say it) → **see** the balance read back, labeled with whether NEAR AI or the local parser answered.
 4. **Tap** **Send 0.1 NEAR to demo friend** → **see** a confirm card with recipient, amount, fee and balance after the send. 0.1 is below the demo's 0.2 NEAR extra-confirm amount, so no phrase is needed.
@@ -328,8 +328,12 @@ Full record (quote, deposit address, intent hashes, settlement): [docs/evidence/
 
 ## Mainnet
 
-The deployed app runs on testnet, so anyone can try it for free. Mainnet is a build setting
-(`NEXT_PUBLIC_NEAR_NETWORK=mainnet`).
+**The deployed app runs on NEAR mainnet** (since 14 Nov 2026): production on Vercel is built with
+`NEXT_PUBLIC_NEAR_NETWORK=mainnet`, reads the free FastNEAR mainnet RPC, and quotes real swaps through the
+NEAR Intents 1Click API. Every send and swap is signed by the user's own wallet (HOT, MyNearWallet, Intear);
+the server holds no mainnet key. The shared demo account, its agent and the daily cron are testnet-only: in a
+mainnet build their routes return 404, so anonymous visitors can't act on mainnet. A testnet build (the
+default, `NEXT_PUBLIC_NEAR_NETWORK` unset) keeps the free shared demo.
 
 **13 Nov 2026, real transactions** through the app's code (`scripts/mainnet-proof.ts`, account `hlpok1lad.tg`):
 
@@ -415,7 +419,6 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   on mainnet; the signature is yours, in your wallet.
 - **Quote only:** swaps on testnet, and price rules (they fetch a dry quote when triggered).
 - **Not in this build:**
-  - the deployed site on mainnet (mainnet is a build setting);
   - agent rules for personal wallets;
   - routing agent payments through TriagePay (read-only integration today);
   - Meteor Wallet;
@@ -449,8 +452,8 @@ payments); then partner wallets through the SDK; then cross-chain payouts throug
 
 | Phase | Scope |
 | --- | --- |
-| **Now (hackathon)** | Voice wallet; NEAR AI intents bound to your words; Wallet Selector (no key pasting); guardrails and kill switch; executed NEAR Intents swaps from the confirm card on mainnet; live TriagePay on-chain limits; testnet agent; security review remediated |
-| **Next** | A mainnet deployment; agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); app-fee collection; APK 1.2; a shared rate-limit store |
+| **Now (hackathon)** | Live on NEAR mainnet; voice wallet; NEAR AI intents bound to your words; Wallet Selector (no key pasting); guardrails and kill switch; executed NEAR Intents swaps from the confirm card on mainnet; live TriagePay on-chain limits; testnet agent; security review remediated |
+| **Next** | Agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); app-fee collection; APK 1.2; a shared rate-limit store |
 | **Later** | Chain Signatures for multi-chain accounts; passkey-backed browser accounts; store releases; SDK beta |
 
 ## Testing

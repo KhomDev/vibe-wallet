@@ -90,7 +90,7 @@ button, input, textarea { font: inherit; color: inherit; }
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 22px 12px;
+  padding: 8px 22px 28px;
 }
 
 .topbar {

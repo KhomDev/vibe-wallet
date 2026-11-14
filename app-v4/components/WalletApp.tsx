@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { suggestTestnetAccountId } from "@/lib/account-id";
+import { shortAccount } from "@/lib/allowlist";
 import { addAgentRule, previewDemoSend, requestQuote, resolveIntent, runAgentNow, sendDemoTransfer, updateDemoPolicy, fetchAgentStatus, type IntentSource, type QuoteView } from "@/lib/client";
 import type { AgentLog, AgentRule } from "@/lib/agent-types";
 import { explorerAccountUrl, explorerTxUrl, IS_MAINNET, NETWORK_ID, SCOPED_CONTRACT_ID, SWAP_MAX_NEAR, WRAP_CONTRACT_ID } from "@/lib/config";
@@ -1257,6 +1258,12 @@ export function WalletApp() {
     : policy.killed ? "blocked"
     : flash === "done" ? "done"
     : "idle";
+  const formatRecipient = (accountId: string) => {
+    if (demo && session.demoRecipient && accountId === session.demoRecipient) {
+      return /^[0-9a-f]{64}$/i.test(accountId) ? `demo friend (${shortAccount(accountId)})` : accountId;
+    }
+    return shortAccount(accountId);
+  };
   const sendExample = demo && session.demoRecipient
     ? `Send 0.1 NEAR to ${session.demoRecipient}`
     : vault?.other ? `Send 0.2 NEAR to ${vault.other.accountId}` : "Send 0.5 NEAR to bob.testnet";
@@ -1326,7 +1333,7 @@ export function WalletApp() {
             <div className="caption" aria-live="polite">
               {sendPending ? (
                 <>
-                  {sendPending.check.blockReason ? "Blocked" : `Send ${sendPending.amountNear} NEAR to ${sendPending.recipient}?`}
+                  {sendPending.check.blockReason ? "Blocked" : `Send ${sendPending.amountNear} NEAR to ${formatRecipient(sendPending.recipient)}?`}
                   <span className="fee">{sendPending.check.blockReason ?? `fee ${sendPending.feeNear} NEAR`}</span>
                 </>
               ) : pending?.kind === "schedule" ? (
@@ -1442,7 +1449,7 @@ export function WalletApp() {
                 data-testid="command-input"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Type a command, or tap a suggestion"
+                placeholder="Type or tap a suggestion"
                 aria-label="Type a command"
               />
               <button className="btn btn-primary" type="submit" disabled={Boolean(busy)}>Ask</button>

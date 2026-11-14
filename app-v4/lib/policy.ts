@@ -148,14 +148,14 @@ export function assessSend(policy: Policy, facts: SendFacts, ownAccountId?: stri
     warnings.push("This recipient is not on your allowlist.");
     phraseReasons.push("The recipient is not on your allowlist.");
   }
-  if (implicit) {
+  if (implicit && !allowlisted) {
     warnings.push(
       facts.accountExists
         ? "This is an unnamed implicit account. Compare the full 64-character id. A typo cannot be reversed."
         : "This implicit account is not on-chain yet. A transfer creates it, and only the matching private key can use the funds.",
     );
     // An allowlisted implicit id was already checked when it was added.
-    if (!allowlisted) phraseReasons.push("The recipient is an implicit account.");
+    phraseReasons.push("The recipient is an implicit account.");
   }
   const similar = allowlisted ? undefined : [...policy.allowlist, ...(ownAccountId ? [ownAccountId] : [])].find((known) => {
     return known !== facts.recipient && levenshtein(known, facts.recipient) <= 2;

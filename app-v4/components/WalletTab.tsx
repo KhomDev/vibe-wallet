@@ -120,7 +120,7 @@ export function WalletTab({
   }, [accountId]);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 pb-2 min-w-0">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 pb-16 min-w-0">
       <section className="glass wallet-card">
         <div className="label">
           <span>Total Balance</span>

@@ -37,3 +37,12 @@ export function checkApiRequest(input: {
   }
   return { ok: true };
 }
+
+/**
+ * The shared demo account, its agent and the daily cron are testnet-only. A mainnet build turns their
+ * routes off at the edge, so anonymous visitors can never open a demo session or act on mainnet; each
+ * connected user signs with their own wallet instead.
+ */
+export function isTestnetOnlyRoute(pathname: string): boolean {
+  return /^\/api\/(demo|agent|cron)(\/|$)/.test(pathname);
+}

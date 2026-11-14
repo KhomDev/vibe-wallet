@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { checkApiRequest } from "./lib/request-guard";
+import { IS_MAINNET } from "./lib/config";
+import { checkApiRequest, isTestnetOnlyRoute } from "./lib/request-guard";
 
 // Every state-changing API call must come from this site, and JSON routes must say they are JSON.
 // That blocks cross-site form posts and `text/plain` "simple requests" (CSRF) on all routes,
@@ -19,6 +20,9 @@ export function middleware(request: NextRequest): NextResponse {
     contentType: request.headers.get("content-type"),
   });
   if (!verdict.ok) return reject(verdict.status, verdict.error);
+  if (IS_MAINNET && isTestnetOnlyRoute(request.nextUrl.pathname)) {
+    return reject(404, "This is a NEAR mainnet deployment: there is no shared demo account or demo agent. Connect your own NEAR wallet.");
+  }
   const response = NextResponse.next();
   response.headers.set("cache-control", "private, no-store");
   return response;

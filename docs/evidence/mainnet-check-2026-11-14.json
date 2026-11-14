@@ -3,7 +3,7 @@
   "rpc": "https://free.rpc.fastnear.com",
   "account": "hlpok1lad.tg",
   "recipient": "gateway.hlpok1lad.tg",
-  "at": "2026-11-14T01:03:53.123Z",
+  "at": "2026-11-14T02:11:16.739Z",
   "signed": 0,
   "broadcast": 0,
   "failed": 0,
@@ -21,7 +21,7 @@
     {
       "step": "account and recipient exist on mainnet",
       "ok": true,
-      "detail": "hlpok1lad.tg: 2.125373 NEAR available; gateway.hlpok1lad.tg: exists; fee estimate 0.00004463 NEAR"
+      "detail": "hlpok1lad.tg: 3.867759 NEAR available; gateway.hlpok1lad.tg: exists; fee estimate 0.00004463 NEAR"
     },
     {
       "step": "0.01 NEAR to the allowlisted recipient: allowed, slide only",
@@ -66,7 +66,83 @@
     {
       "step": "NEAR Intents 1Click quote with dry: true",
       "ok": true,
-      "detail": "0.03 NEAR -> about 0.102707 USDC (QUOTE ONLY. NEAR Intents execution is mainnet-only. This is a dry quote: no deposit address was created and nothing was signed or sent.)"
+      "detail": "0.03 NEAR -> about 0.102169 USDC (QUOTE ONLY. NEAR Intents execution is mainnet-only. This is a dry quote: no deposit address was created and nothing was signed or sent.)"
+    },
+    {
+      "step": "TriagePay policy wallet limits read from chain",
+      "ok": true,
+      "detail": "tp-wallet.hlpok1lad.tg: agent tp-agent2.hlpok1lad.tg active, per payment 0.000000000000000001 wNEAR, per day 0.000000000000000004 wNEAR, payees [gateway.hlpok1lad.tg]"
+    },
+    {
+      "step": "executable 1Click quote (dry: false) matches the request",
+      "ok": true,
+      "detail": "0.03 NEAR -> about 0.102199 USDC (min 0.101177), deposit address 67d291891293…, delivers to and refunds hlpok1lad.tg"
+    },
+    {
+      "step": "swap policy (0.05 NEAR cap): allowed, phrase required",
+      "ok": true,
+      "detail": "wNEAR held 0; registered on wrap.near true, on USDC true"
+    },
+    {
+      "step": "exact unsigned swap transactions built",
+      "ok": true,
+      "detail": "1 transaction(s): wrap.near.near_deposit, wrap.near.storage_deposit, wrap.near.ft_transfer; attaches 0.03125 NEAR in total"
     }
-  ]
+  ],
+  "onchain": {
+    "walletId": "tp-wallet.hlpok1lad.tg",
+    "agentId": "tp-agent2.hlpok1lad.tg",
+    "owner": "hlpok1lad.tg",
+    "paused": false,
+    "tokens": [
+      "wrap.near"
+    ],
+    "agent": {
+      "active": true,
+      "perCallMax": "1000000",
+      "dailyMax": "4000000",
+      "spentToday": "0",
+      "remainingToday": "4000000",
+      "payees": [
+        "gateway.hlpok1lad.tg"
+      ]
+    },
+    "review": {
+      "approvalThreshold": "500000",
+      "reviewUnknownPayees": false,
+      "pendingCount": 0,
+      "maxPending": 8
+    },
+    "decimals": 24
+  },
+  "swapPlan": {
+    "quote": {
+      "depositAddress": "67d291891293…",
+      "amountIn": "30000000000000000000000",
+      "amountInFormatted": "0.03",
+      "amountOut": "102199",
+      "amountOutFormatted": "0.102199",
+      "minAmountOut": "101177",
+      "minAmountOutFormatted": "0.101177",
+      "deadline": "2026-11-17T02:31:15.987Z",
+      "timeEstimate": 22,
+      "originAsset": "nep141:wrap.near",
+      "destinationAsset": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "recipient": "hlpok1lad.tg",
+      "refundTo": "hlpok1lad.tg",
+      "toSymbol": "USDC"
+    },
+    "chain": {
+      "wrappedYocto": "0",
+      "userOnWrap": true,
+      "userOnDestination": true
+    },
+    "actions": [
+      "wrap.near.near_deposit",
+      "wrap.near.storage_deposit",
+      "wrap.near.ft_transfer"
+    ],
+    "attachedYocto": "31250000000000000000001",
+    "signed": false
+  }
 }

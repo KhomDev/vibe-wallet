@@ -33,8 +33,8 @@ Intent hashes reported by 1Click: `E9oyeSUEaFooJsrQFTkFuTQTWrgqiM7c9UgX2kZ7u5AX`
 
 After the security remediation (see [SECURITY-REVIEW-2026-11-14.md](SECURITY-REVIEW-2026-11-14.md)) the changed
 logic was run against live NEAR mainnet with `npm run mainnet:check` (`app-v4/scripts/mainnet-check.ts`). It
-needs no private key and signs nothing. Result on 14 November 2026: **12/12 passed, 0 transactions signed,
-0 broadcast**. Full output: [evidence/mainnet-check-2026-11-14.json](evidence/mainnet-check-2026-11-14.json).
+needs no private key and signs nothing. Result on 14 November 2026: **16/16 passed, 0 transactions signed,
+0 broadcast** (12 checks in the first run; the TriagePay and swap checks were added later that day). Full output: [evidence/mainnet-check-2026-11-14.json](evidence/mainnet-check-2026-11-14.json).
 
 | Check | Result |
 | --- | --- |
@@ -59,6 +59,28 @@ npm run mainnet:check -- hlpok1lad.tg gateway.hlpok1lad.tg ../docs/evidence/main
 The new signer path (per-account lock, pre-broadcast hash, reconciliation) also sent two real testnet
 transfers through the local production build. Both hashes the app computed before broadcasting are the
 hashes testnet recorded ([evidence/testnet-e2e-2026-11-14.json](evidence/testnet-e2e-2026-11-14.json)).
+
+## Executed swap from the confirm card, up to the signature
+
+Also checked on mainnet by `npm run mainnet:check`, without a key:
+
+| Check | Result |
+| --- | --- |
+| TriagePay policy wallet limits read from chain | `tp-wallet.hlpok1lad.tg`: agent `tp-agent2.hlpok1lad.tg` active, 1e6 yocto-wNEAR per payment, 4e6 per day, payees `[gateway.hlpok1lad.tg]` |
+| Executable 1Click quote (`dry: false`) | 0.03 NEAR to about 0.1022 USDC (min 0.1012); delivers to and refunds `hlpok1lad.tg`; passed `verifyLiveQuote` |
+| Swap policy (0.05 NEAR cap) | Allowed, confirm phrase required |
+| Exact unsigned transactions | 1 transaction to `wrap.near`: `near_deposit` (0.03 NEAR), `storage_deposit` (deposit address), `ft_transfer` (0.03 wNEAR); 0.03125 NEAR attached in total |
+
+The transactions were not signed: an executed swap moves real funds, so the account holder approves it in
+their wallet. To do that from the app:
+
+```bash
+cd app-v4 && NEXT_PUBLIC_NEAR_NETWORK=mainnet npm run build && NEXT_PUBLIC_NEAR_NETWORK=mainnet npm start
+```
+
+Open http://127.0.0.1:43123/?app=1, **Connect a wallet** (HOT for `hlpok1lad.tg`), say or type
+`Swap 0.03 NEAR to USDC`, check the listed actions, type the confirm phrase, slide, and approve in the
+wallet. The card then polls 1Click until `SUCCESS`, `REFUNDED` or `FAILED`.
 
 ## Mainnet mode
 

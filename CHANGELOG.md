@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-11-14 (later): wallet connector, executed swaps, on-chain limits
+
+- **No more key pasting.** "Import account" (paste a secret key) is removed. The setup screen offers
+  **Connect a wallet** through NEAR Wallet Selector 10.1.4 (HOT, MyNearWallet, Intear; FastNEAR RPC),
+  a fresh testnet account whose key is generated in the browser, or the shared demo. Existing browser
+  vaults still unlock.
+- **Connected-wallet sends** run the same policy on live data before the app asks the wallet to sign
+  (`lib/near/wallet-send.ts`). The daily spend is reserved first and given back if the wallet cancels.
+  Browser-wallet redirects are reconciled on return.
+- **Executed NEAR Intents swaps from the confirm card (mainnet builds).**
+  - `/api/intents/quote` gets an executable 1Click quote.
+  - `verifyLiveQuote` checks the amount, the assets, that recipient and refund are the user's own
+    account, the expiry, and the deposit address.
+  - `buildSwapTransactions` builds only the needed `storage_deposit`, `near_deposit` and `ft_transfer`
+    actions, all on `wrap.near`.
+  - `assessSwap` applies the per-send and daily limits and the kill switch, a 1 NEAR ceiling, and always
+    requires the phrase.
+  - Afterwards the deposit is reported and the status polled.
+- **Limits enforced on chain.** A Wallet-tab card (and "show on-chain limits") reads a TriagePay
+  policy-wallet contract live: agent caps, payees, review threshold, pause.
+- CSP: `connect-src`/`img-src` allow HTTPS (and WSS) for wallet SDKs, `frame-src https:`, and COOP
+  `same-origin-allow-popups` for popup wallets. `frame-ancestors 'none'` and same-origin scripts are unchanged.
+- `npm run mainnet:check` now also reads TriagePay's on-chain limits, and builds and verifies the swap up
+  to the signature. Result: 16/16, nothing signed.
+- Tests: 89 (adds the swap verifier and builder, the swap policy, the testnet refusal of executable
+  quotes, the TriagePay reader, and a blocked send never reaching the wallet).
+
 ## 2026-11-14: security remediation
 
 Fixes for every finding of the internal red-team review of `bc01dbb`. The record, finding by finding, is in

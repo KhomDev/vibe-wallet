@@ -2,6 +2,24 @@
 
 All times below are in Europe/Budapest (CET, UTC+1). Date: 13 November 2026.
 
+## 14 November 2026 (later): wallet connector, executed swaps, on-chain limits
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 89/89 passed |
+| `npm run typecheck` / `npm run lint` / `npm run build` | 0 errors / 0 errors (7 warnings) / passed; first-load JS 293 kB (wallet modules load on demand) |
+| `npm audit --omit=dev` | 0 critical, 0 high, 6 moderate, 17 low (wallet SDK transitive dependencies; Meteor Wallet left out for its high advisories) |
+| NEAR mainnet, `npm run mainnet:check` | 16/16, nothing signed ([evidence](evidence/mainnet-check-2026-11-14.json)) |
+| Browser load of the production build | The setup screen lists HOT Wallet, MyNearWallet and Intear Wallet with their icons; no "secret key" field; no console errors or CSP violations |
+
+New tests:
+
+- `tests/intents-swap.test.ts`: the executable quote request (delivers to and refunds the user, `dry: false`); `verifyLiveQuote` rejecting a different amount, recipient, refund account, token, missing or self deposit address, near-expiry and zero output; `buildSwapTransactions` for a fresh account, a ready account and a partial wNEAR balance (only the shortfall is wrapped); chain state read with view calls only; `assessSwap` (kill switch, ceiling, per-send, daily, balance, phrase always required); the executable-quote route refusing on testnet; the `onchain_limits` intent.
+- `tests/wallet-connector.test.ts`: the selector uses FastNEAR RPC; a send the policy blocks (kill switch, caps, unknown recipient, phrase at threshold, unconfirmed) never reaches the wallet; the TriagePay reader's exact view calls and field mapping, and full-precision formatting of tiny caps.
+
+Not covered by automated tests: signing in to a real wallet and approving a real payment. Those need the
+wallet owner and were not done for this change.
+
 ## 14 November 2026: security remediation
 
 After the fixes recorded in [SECURITY-REVIEW-2026-11-14.md](SECURITY-REVIEW-2026-11-14.md):

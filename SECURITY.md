@@ -15,10 +15,13 @@ The deployed demo runs on NEAR **testnet**. Please do not run load or drain test
 
 | Asset | Protection | Where |
 | --- | --- | --- |
-| Your full-access key (personal wallet) | Encrypted in the browser: PBKDF2-SHA256 600,000 iterations → AES-GCM-256, fresh salt and IV, AAD bound to account, key and slot; 12+ character passphrase. Never in a request body. | `lib/vault.ts`, `lib/session.ts` |
+| Your key, connected wallet (HOT, MyNearWallet, Intear) | Never in the app: the wallet keeps it. Sign-in shares the account id and requests no function-call key. Every payment opens the wallet's own approval, after the app's policy allowed it. | `lib/near/wallet-connector.ts`, `lib/near/wallet-send.ts` |
+| Your full-access key (browser account) | Generated in the browser (never pasted), encrypted: PBKDF2-SHA256 600,000 iterations → AES-GCM-256, fresh salt and IV, AAD bound to account, key and slot; 12+ character passphrase. Never in a request body. | `lib/vault.ts`, `lib/session.ts` |
 | What gets signed | The model returns a typed intent only. It is accepted only if the recipient and amount appear in the user's own words. The policy runs on the confirm card and again inside the signer. | `lib/intent.ts`, `lib/policy.ts`, `lib/near/signer.ts` |
 | Your confirmation | Slide (or four arrow-key steps), the confirm phrase when the policy asks for it, or a whole-utterance spoken "yes" for small allowlisted sends in hands-free mode. Allowlist additions and loosening any limit need the phrase. | `components/SlideConfirm.tsx`, `components/WalletApp.tsx`, `lib/handsfree.ts` |
-| Double sends | One signing operation per account across tabs; transaction hash computed before broadcast and looked up after a failed send call. | `lib/near/signer.ts`, `lib/near/broadcast.ts` |
+| Double sends | One signing operation per account across tabs; transaction hash computed before broadcast and looked up after a failed send call. A browser-wallet redirect is recorded before it leaves, and its returned hash or cancellation is reconciled. | `lib/near/signer.ts`, `lib/near/broadcast.ts`, `components/WalletApp.tsx` |
+| Executed Intents swaps (mainnet) | The 1Click quote must deliver to and refund the user's own account, match the requested amount and asset, and not be near expiry. Only the listed `wrap.near` (and destination-token registration) actions are signed. Per-send and daily limits apply, the phrase is always required, 1 NEAR ceiling. | `lib/intents-swap-client.ts`, `lib/policy.ts` (`assessSwap`), `app/api/intents/*` |
+| Agent limits on chain (TriagePay) | Read-only view calls to a TriagePay policy-wallet contract; nothing is signed. | `lib/near/policy-wallet.ts` |
 | The shared demo key | Server environment only; signs only on testnet (build and node `chain_id` both checked). | `lib/server/env.ts`, `lib/server/transfer.ts` |
 | Demo spend | Limits checked and spend reserved in one compare-and-swap write before signing; single-use confirmation token per send; per-visitor, per-network and global caps. | `lib/server/state.ts`, `lib/server/demo-limits.ts`, `lib/server/confirm-token.ts` |
 | Demo settings | Each visitor's stop switch, allowlist and agent rules belong to their signed cookie; the global kill switch is operator-only. | `app/api/demo/policy`, `app/api/agent/*` |
@@ -31,5 +34,9 @@ The deployed demo runs on NEAR **testnet**. Please do not run load or drain test
 - The NEAR AI rate limiter is per server instance; the deployment has no shared KV store.
 - The personal-wallet confirm phrase is a deliberate-intent check, not a secret bound to one recipient and amount.
 - The published APK is 1.1; the Android hardening above ships with 1.2.
+- Wallet SDKs are third-party code that runs in the page (loaded on demand, pinned to exact versions).
+  Meteor Wallet is not included because its SDK pulls dependencies with open high-severity advisories.
+- Connected-wallet limits are enforced by this app, not by the wallet or the chain: the user can always
+  sign anything directly in their own wallet. Chain-enforced limits are what TriagePay adds.
 - No third-party audit. The internal review and its remediation are in
   [docs/SECURITY-REVIEW-2026-11-14.md](docs/SECURITY-REVIEW-2026-11-14.md).

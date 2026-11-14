@@ -134,3 +134,10 @@ gaps were in the **confirmation model**.
 | Local production build against NEAR testnet (`scripts/e2e-http.mjs`) | 19/19 passed, two real transfers: [7Py477om…](https://testnet.nearblocks.io/txns/7Py477omDvYMysjMxYBo5GeiTLYnhVDuoSg8tb2RSEBv), [jgPVdXZa…](https://testnet.nearblocks.io/txns/jgPVdXZaVhgqaxGdbnTVE3rEhJFE8Dq49tVi2QfxZ2G) |
 | NEAR mainnet, key-free (`npm run mainnet:check`) | 12/12 passed, nothing signed: [docs/evidence/mainnet-check-2026-11-14.json](evidence/mainnet-check-2026-11-14.json) |
 | Playwright browser e2e | Not re-run for this change (Playwright browsers are not installed on the machine used). `e2e/production.spec.ts` was updated for the new keyboard confirm. |
+
+## Follow-up the same day
+
+Later on 14 November the import-by-pasting-a-key path was removed in favour of NEAR Wallet Selector, and
+executed NEAR Intents swaps and a live TriagePay on-chain limits card were added. See
+[CHANGELOG.md](../CHANGELOG.md) and [SECURITY.md](../SECURITY.md). Test suite after that change: 89/89;
+the mainnet check: 16/16, nothing signed.

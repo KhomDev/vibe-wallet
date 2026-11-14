@@ -19,7 +19,9 @@ flowchart TD
   intent --> policy[Safety policy]
   policy -->|blocked| orb
   policy -->|ok, you confirm| signer
-  signer -->|owned wallet| browserKey[Browser-held full-access key]
+  signer -->|connected wallet| walletSel[Wallet Selector: HOT, MyNearWallet, Intear]
+  walletSel --> chain
+  signer -->|browser account| browserKey[Browser-held full-access key]
   signer -->|demo account| preview["POST /api/demo/send preview → token"]
   preview --> demoApi["POST /api/demo/send + token"]
   browserKey --> chain[NEAR]
@@ -61,9 +63,22 @@ The app does not depend on the browser's Web Speech API, which fails with a `net
 
 `assessSend` (`lib/policy.ts`) checks the kill switch, per-transaction and daily limits, the allowlist, account existence and the balance, and decides whether the confirm phrase is needed (recipient not allowlisted, amount at or above the extra-confirm threshold, implicit account, look-alike of a contact, most of the balance). It runs for the confirm card and again inside the signer.
 
-- **Personal wallet:** `lib/near/signer.ts` signs in the browser with the decrypted full-access key. It verifies the key is a full-access key for the account, runs `assessSend` with live data, holds a per-account lock (Web Locks across tabs), and broadcasts through `lib/near/broadcast.ts`, which computes the transaction hash before sending and looks it up if the send call fails. The daily counter is reserved right before broadcast and returned only if the send certainly did not happen.
+- **Connected wallet:** `lib/near/wallet-connector.ts` sets up NEAR Wallet Selector 10.1.4 with HOT, MyNearWallet and Intear (loaded on demand, FastNEAR RPC). Sign-in passes no `contractId`, so no function-call key is requested; the app learns the account id only. `lib/near/wallet-send.ts` re-runs `assessSend` with live data and only then calls the wallet's `signAndSendTransaction`. The daily counter is reserved first, and a pending record is written before a browser wallet redirects away; on return, `takeWalletRedirect` reads `transactionHashes` or `errorCode` and the spend is kept or given back.
+- **Browser account:** `lib/near/signer.ts` signs in the browser with the decrypted full-access key. It verifies the key is a full-access key for the account, runs `assessSend` with live data, holds a per-account lock (Web Locks across tabs), and broadcasts through `lib/near/broadcast.ts`, which computes the transaction hash before sending and looks it up if the send call fails. The daily counter is reserved right before broadcast and returned only if the send certainly did not happen.
 - **Demo account:** `lib/server/transfer.ts` signs on the server, only on testnet (`NETWORK_ID` and the node's `chain_id`), one signature at a time per instance.
 - API routes under `app/api` and `lib/server` never import the browser signer (a test checks this). Quotes are forced to `dry: true`.
+
+## Executed NEAR Intents swaps (mainnet builds)
+
+1. `POST /api/intents/quote` (mainnet only; refuses on a testnet build) asks 1Click for an executable quote (`dry: false`, `recipientType: DESTINATION_CHAIN`, recipient and refund = the user's account). It holds no key and signs nothing.
+2. `verifyLiveQuote` (`lib/intents-swap-client.ts`) refuses a quote whose amount, origin or destination asset, recipient, refund account, deadline, deposit address or output does not match the request.
+3. `readSwapChainState` reads, with view calls, the user's wNEAR balance and storage registration on `wrap.near` and on the destination token. `buildSwapTransactions` returns the exact transactions: an optional `storage_deposit` on the destination token, then one `wrap.near` transaction with an optional `storage_deposit` for the user, `near_deposit` for the shortfall only, `storage_deposit` for the deposit address, and `ft_transfer` of the quoted amount.
+4. `assessSwap` (`lib/policy.ts`) applies the kill switch, per-send and daily limits, a balance check that includes storage deposits and fees, and a `SWAP_MAX_NEAR` ceiling. The phrase is always required.
+5. The user's wallet (or the browser signer, restricted to `wrap.near` and the destination token) signs. `POST /api/intents/submit` reports the deposit transaction and `GET /api/intents/status` is polled until `SUCCESS`, `REFUNDED` or `FAILED`.
+
+## Limits enforced on chain (TriagePay)
+
+`lib/near/policy-wallet.ts` reads a [TriagePay](https://github.com/KhomDev/TriagePay) policy-wallet contract with `get_config`, `get_agent` and `get_review_policy` (view calls only). `components/OnChainLimitsCard.tsx` shows the result in the Wallet tab, and the `onchain_limits` intent ("show on-chain limits") opens it. Defaults: `tp-wallet.hlpok1lad.tg` / `tp-agent2.hlpok1lad.tg` on mainnet, `tpd-e947e7-wallet.testnet` / `tpd-e947e7-agent.testnet` on testnet. Vibe Wallet's own limits are app-enforced; TriagePay's are contract-enforced on every `pay`.
 
 ## Demo state and limits
 
@@ -99,7 +114,10 @@ Testnet is the default. `NEXT_PUBLIC_NEAR_NETWORK=mainnet` switches RPC, explore
 | `app-v4/middleware.ts`, `lib/request-guard.ts` | Cross-site and content-type guard for `/api` |
 | `app-v4/lib/` | Parser, policy, vault, NEAR helpers, voice recorder |
 | `app-v4/lib/server/` | Demo state (CAS), limits and reservations, visitor ids, confirmation tokens, rate limits, demo signer, agent |
-| `app-v4/lib/server/intents-swap.ts` | Executed NEAR Intents swap via 1Click (mainnet only) |
+| `app-v4/lib/near/wallet-connector.ts`, `wallet-send.ts` | NEAR Wallet Selector setup and connected-wallet sends |
+| `app-v4/lib/intents-swap-client.ts`, `app/api/intents/` | Confirm-card Intents swap: quote verification, exact transactions, status |
+| `app-v4/lib/near/policy-wallet.ts`, `components/OnChainLimitsCard.tsx` | Live read of a TriagePay policy wallet |
+| `app-v4/lib/server/intents-swap.ts` | Executed NEAR Intents swap with a server-held key, used by the mainnet proof script |
 | `app-v4/scripts/mainnet-check.ts` | Key-free mainnet check of the current logic |
 | `app-v4/scripts/mainnet-proof.ts` | Mainnet proof: signer transfer plus executed Intents swap (`--broadcast`) |
 | `app-v4/scripts/e2e-http.mjs` | HTTP end-to-end check of a running build against testnet |

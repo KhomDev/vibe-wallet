@@ -72,7 +72,7 @@ From `app-v4/`:
 npm run lint
 npm run typecheck
 npm test
-npm run test:e2e   # Playwright against production (default https://vibe-wallet-flame.vercel.app)
+npm run test:e2e   # Playwright against the shared testnet demo (default https://vibe-wallet-testnet.vercel.app)
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, typecheck, and unit tests on every push and pull request. It does not need secrets and does not hit production.

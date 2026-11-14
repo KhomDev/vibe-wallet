@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const RECIPIENT = "a94ddd8e89eddfaa4a5c6ed25e809cd73265256e391e04c5bc59b6d83bfa055a";
+const RECIPIENT = process.env.E2E_DEMO_RECIPIENT || "vibe-friend-uxwhdb.testnet";
 const fixture = readFileSync(join(process.cwd(), "tests/fixtures/whats-my-balance.webm"));
 
 async function installFakeMicrophone(page: Page) {

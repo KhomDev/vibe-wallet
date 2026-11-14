@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = process.env.E2E_BASE_URL || "https://vibe-wallet-flame.vercel.app";
+const baseURL = process.env.E2E_BASE_URL || "https://vibe-wallet-testnet.vercel.app";
 
 export default defineConfig({
   testDir: "./e2e",

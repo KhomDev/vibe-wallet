@@ -8,6 +8,7 @@
 check it, and nothing is signed until you confirm: in your own wallet, or with a slide.**
 
 [![Live on mainnet](https://img.shields.io/badge/Live_on_mainnet-vibe--wallet--flame.vercel.app-000000?style=flat-square&logo=vercel&logoColor=white)](https://vibe-wallet-flame.vercel.app)
+[![Free testnet demo](https://img.shields.io/badge/Free_testnet_demo-vibe--wallet--testnet.vercel.app-7B61FF?style=flat-square&logo=vercel&logoColor=white)](https://vibe-wallet-testnet.vercel.app/?app=1&demo=1)
 [![Android APK](https://img.shields.io/badge/Android-APK-3DDC84?style=flat-square&logo=android&logoColor=white)](https://vibe-wallet-flame.vercel.app/download/vibe-wallet.apk)
 [![NEAR](https://img.shields.io/badge/NEAR-live_on_mainnet-00EC97?style=flat-square&logo=near&logoColor=black)](#mainnet)
 [![NEAR AI Cloud](https://img.shields.io/badge/NEAR_AI_Cloud-Whisper_%2B_GLM-0A84FF?style=flat-square)](#near-technology-used)
@@ -17,11 +18,18 @@ check it, and nothing is signed until you confirm: in your own wallet, or with a
 
 Built at **NEAR HACKATHON 2026**
 
-[Live app (mainnet)](https://vibe-wallet-flame.vercel.app) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Mainnet proof](#mainnet-proof) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
+[Live app (mainnet)](https://vibe-wallet-flame.vercel.app) · [Try it free (testnet demo for judges)](https://vibe-wallet-testnet.vercel.app/?app=1&demo=1) · [Try it in 60 seconds](#try-it-in-60-seconds) · [Two layers of limits](#two-layers-of-limits-vibe-wallet--triagepay) · [Mainnet swap](#executed-near-intents-swaps-mainnet) · [Mainnet proof](#mainnet-proof) · [Security](#security-model) · [Architecture](docs/ARCHITECTURE.md)
 
 </div>
 
 ---
+
+## Try it free (testnet demo for judges)
+
+No wallet, no sign-up, no real money: **[vibe-wallet-testnet.vercel.app](https://vibe-wallet-testnet.vercel.app/?app=1&demo=1)** opens the shared
+testnet demo account in one tap. It is the same code as production, built for NEAR testnet, with real testnet
+transfers (capped, allowlisted, rate-limited, key on the server) and NEAR Intents quotes. The production app at
+[vibe-wallet-flame.vercel.app](https://vibe-wallet-flame.vercel.app) is NEAR mainnet with your own wallet.
 
 ## Screenshots
 
@@ -223,9 +231,9 @@ cd app-v4 && npm install && NEXT_PUBLIC_NEAR_NETWORK=mainnet npm run build && NE
 
 ## Try it in 60 seconds
 
-The production site runs on **mainnet** with your own wallet (see [Mainnet](#mainnet)). These steps use the free shared demo of a **testnet build** (no real money, no wallet, no sign-up): run `cd app-v4 && npm install && npm run dev` with the demo variables from `.env.example`, or deploy a preview. Each step is *do X → see Y*.
+The production site runs on **mainnet** with your own wallet (see [Mainnet](#mainnet)). These steps use the free shared demo at **[vibe-wallet-testnet.vercel.app](https://vibe-wallet-testnet.vercel.app/?app=1&demo=1)** (a testnet build: no real money, no wallet, no sign-up). Each step is *do X → see Y*.
 
-1. **Open** the testnet build at `/?app=1` → **see** the orb screen.
+1. **Open** https://vibe-wallet-testnet.vercel.app/?app=1 → **see** the orb screen.
 2. **Tap** **Try a demo account** → **see** the orb greet you with the demo account's testnet balance.
 3. **Tap** **What's my balance?** (or tap the orb and say it) → **see** the balance read back, labeled with whether NEAR AI or the local parser answered.
 4. **Tap** **Send 0.1 NEAR to demo friend** → **see** a confirm card with recipient, amount, fee and balance after the send. 0.1 is below the demo's 0.2 NEAR extra-confirm amount, so no phrase is needed.
@@ -333,7 +341,8 @@ Full record (quote, deposit address, intent hashes, settlement): [docs/evidence/
 NEAR Intents 1Click API. Every send and swap is signed by the user's own wallet (HOT, MyNearWallet, Intear);
 the server holds no mainnet key. The shared demo account, its agent and the daily cron are testnet-only: in a
 mainnet build their routes return 404, so anonymous visitors can't act on mainnet. A testnet build (the
-default, `NEXT_PUBLIC_NEAR_NETWORK` unset) keeps the free shared demo.
+default, `NEXT_PUBLIC_NEAR_NETWORK` unset) keeps the free shared demo; it runs as a separate Vercel project at
+[vibe-wallet-testnet.vercel.app](https://vibe-wallet-testnet.vercel.app), linked from the mainnet landing page (`NEXT_PUBLIC_TESTNET_DEMO_URL`).
 
 **13 Nov 2026, real transactions** through the app's code (`scripts/mainnet-proof.ts`, account `hlpok1lad.tg`):
 

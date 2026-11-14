@@ -23,6 +23,38 @@ Built at **NEAR HACKATHON 2026**
 
 ---
 
+## Screenshots
+
+Live demo: [vibe-wallet-flame.vercel.app](https://vibe-wallet-flame.vercel.app). Captured 14 Nov 2026 (Europe/Budapest).
+
+<p align="center"><img src="docs/screenshots/landing.png" alt="Vibe Wallet marketing landing with the talking orb and a phone QR code" width="900"></p>
+
+Marketing landing, with the talking orb and a QR code for the phone.
+
+<p align="center"><img src="docs/screenshots/demo-orb.png" alt="Shared demo account on the Orb tab, ready to talk, type, or tap a suggestion" width="900"></p>
+
+Shared demo account (testnet) on the Orb tab: voice, type, or tap a suggestion, then confirm.
+
+<p align="center"><img src="docs/screenshots/send-confirm.png" alt="Slide-to-confirm card for sending 0.1 NEAR from the demo account" width="900"></p>
+
+A real preview of **send 0.1 NEAR** on the shared demo account, with slide-to-confirm. Nothing was signed in this capture.
+
+<p align="center"><img src="docs/screenshots/wallet.png" alt="Wallet tab showing the demo account balance, Send Receive Swap, and token list" width="900"></p>
+
+Wallet tab on the shared demo account, with the testnet balance, Send / Receive / Swap, and token list.
+
+<p align="center"><img src="docs/screenshots/safety.png" alt="Safety panel with caps, allowlist, kill switch, and recent demo sends" width="900"></p>
+
+Safety controls on the demo account: caps, allowlist, kill switch, and recent demo sends.
+
+<p align="center"><img src="docs/screenshots/demo-mobile.png" alt="Vibe Wallet mobile Orb screen" width="390"></p>
+
+Mobile Orb screen (390×844) of the shared demo account.
+
+## Promo video
+
+Coming soon.
+
 ## What it is
 
 Vibe Wallet is a voice-first NEAR wallet app: a Next.js web app that also installs as a PWA, plus an

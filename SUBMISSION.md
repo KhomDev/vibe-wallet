@@ -11,6 +11,7 @@ This is a draft of the official submission form.
 - **Demo video:** `demo/vibe-wallet-demo.mp4` (captions at `demo/vibe-wallet-demo.srt`)
 - **Source:** https://github.com/KhomDev/vibe-wallet
 - **Other entry by the same team:** [TriagePay](https://github.com/KhomDev/TriagePay)
+- **Submitter:** Yura (Yuriy Khomenkov) · email yuriykhomekov@gmail.com · GitHub [@KhomDev](https://github.com/KhomDev) · X [@YKhomenkov](https://x.com/YKhomenkov)
 
 See the root [README.md](README.md) for features, architecture, env var names, and what is real versus quote-only.
 Security: [SECURITY.md](SECURITY.md) and the 14 Nov 2026 review and remediation, [docs/SECURITY-REVIEW-2026-11-14.md](docs/SECURITY-REVIEW-2026-11-14.md).

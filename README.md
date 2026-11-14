@@ -61,7 +61,11 @@ Mobile (390×844).
 
 ## Promo video
 
-Coming soon.
+<!-- PROMO_VIDEO_SLOT: keep this heading. Replace the placeholder line below with a 16:9 embed (or a link to the file) when the final render is ready. The 9:16 cut is for the X submission post. Do not delete these markers. -->
+
+_Official 16:9 demo video will be embedded here._
+
+<!-- /PROMO_VIDEO_SLOT -->
 
 ## What it is
 
@@ -407,7 +411,7 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | NEAR technology | How Vibe Wallet uses it |
 | --- | --- |
 | **NEAR AI Cloud** | `openai/whisper-large-v3` for voice and `z-ai/glm-5.3-flash` for intent extraction, via `cloud-api.near.ai` |
-| **NEAR Intents (1Click API)** | Executed swaps from the confirm card on mainnet (quote verified, exact transactions signed by your wallet); dry quotes on testnet; an executed swap on mainnet on 13 Nov |
+| **NEAR Intents (1Click API)** | Executed swaps from the confirm card on mainnet (quote verified, exact transactions signed by your wallet); dry quotes on testnet; executed swaps on mainnet on 13 and 14 Nov |
 | **NEAR Wallet Selector** | HOT, MyNearWallet and Intear connect; your wallet signs every payment |
 | **Smart-contract limits (TriagePay)** | Live view of a policy-wallet contract that enforces an agent's caps and payee allowlist on chain |
 | **Native transfers** | Real `Transfer` actions on testnet and mainnet |
@@ -462,14 +466,14 @@ payments); then partner wallets through the SDK; then cross-chain payouts throug
 | Phase | Scope |
 | --- | --- |
 | **Now (hackathon)** | Live on NEAR mainnet; voice wallet; NEAR AI intents bound to your words; Wallet Selector (no key pasting); guardrails and kill switch; executed NEAR Intents swaps from the confirm card on mainnet; live TriagePay on-chain limits; testnet agent; security review remediated |
-| **Next** | Agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); app-fee collection; APK 1.2; a shared rate-limit store |
+| **Next** | Agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); a browser extension that is a popup or side panel for typed or spoken commands and hands the transaction to your existing wallet to sign (no key storage in the extension); app-fee collection; APK 1.2; a shared rate-limit store |
 | **Later** | Chain Signatures for multi-chain accounts; passkey-backed browser accounts; store releases; SDK beta |
 
 ## Testing
 
 | Check | Result (14 Nov 2026) |
 | --- | --- |
-| Unit, route and security tests (`npm test`) | 89/89 passed. They include the real route handlers driven against a stub RPC that decodes every signed transaction, the swap verifier and builder, and the rule that a blocked send never reaches the wallet |
+| Unit, route and security tests (`npm test`) | 94/94 passed. They include the real route handlers driven against a stub RPC that decodes every signed transaction, the swap verifier and builder, the rule that a blocked send never reaches the wallet, and the Wallet-tab balance retry / fallback-RPC path |
 | Typecheck / lint / production build | 0 errors / 0 errors / passed |
 | Local production build against NEAR testnet (`scripts/e2e-http.mjs`) | 19/19, with real transfers |
 | NEAR mainnet, key-free (`npm run mainnet:check`) | 16/16, nothing signed |
@@ -492,7 +496,9 @@ Note: `https://vibe-wallet.vercel.app` is an unrelated third-party app. The live
 
 ## Team
 
-- **Yura**: builder · GitHub [@KhomDev](https://github.com/KhomDev) · X [@YKhomenkov](https://x.com/YKhomenkov)
+Hackathon submitter (this project and [TriagePay](https://github.com/KhomDev/TriagePay)):
+
+- **Yura (Yuriy Khomenkov)** — team lead · email [yuriykhomekov@gmail.com](mailto:yuriykhomekov@gmail.com) · GitHub [@KhomDev](https://github.com/KhomDev) · X [@YKhomenkov](https://x.com/YKhomenkov)
 
 ## License
 

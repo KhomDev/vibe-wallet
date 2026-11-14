@@ -1,6 +1,6 @@
 // Edge-safe request checks used by middleware.ts. Kept separate so tests can import them.
 
-const JSON_ROUTES = new Set(["/api/demo/send", "/api/demo/policy", "/api/agent/rules", "/api/intent", "/api/quote"]);
+const JSON_ROUTES = new Set(["/api/demo/send", "/api/demo/policy", "/api/agent/rules", "/api/intent", "/api/quote", "/api/intents/quote", "/api/intents/submit"]);
 const MULTIPART_ROUTES = new Set(["/api/transcribe"]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

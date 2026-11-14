@@ -56,6 +56,21 @@ export const DEFAULT_STORED_POLICY = {
   killed: false,
 };
 
+/**
+ * TriagePay policy wallet whose limits are enforced on chain by its contract. The Wallet tab reads
+ * it live (view calls only). Defaults: the TriagePay mainnet campaign wallet and the testnet review
+ * wallet. See https://github.com/KhomDev/TriagePay.
+ */
+export const POLICY_WALLET_ID = process.env.NEXT_PUBLIC_POLICY_WALLET_ID
+  || (IS_MAINNET ? "tp-wallet.hlpok1lad.tg" : "tpd-e947e7-wallet.testnet");
+export const POLICY_AGENT_ID = process.env.NEXT_PUBLIC_POLICY_AGENT_ID
+  || (IS_MAINNET ? "tp-agent2.hlpok1lad.tg" : "tpd-e947e7-agent.testnet");
+
+/** Hard ceiling for one executed Intents swap, on top of the user's own per-send limit. */
+export const SWAP_MAX_NEAR = process.env.NEXT_PUBLIC_SWAP_MAX_NEAR || "1";
+
+export const WRAP_CONTRACT_ID = IS_MAINNET ? "wrap.near" : "wrap.testnet";
+
 const EXPLORER: Record<NetworkId, string> = {
   testnet: "https://testnet.nearblocks.io",
   mainnet: "https://nearblocks.io",

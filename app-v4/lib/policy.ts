@@ -43,6 +43,32 @@ export type SendCheck = {
   similarTo?: string | null;
 };
 
+/**
+ * A swap moves NEAR to a one-time 1Click deposit address, so it is treated like a send to an unknown
+ * account: kill switch, per-send and daily limits apply to the swapped amount, the balance must cover
+ * the amount plus the attached storage deposits and fees, and the confirm phrase is always required.
+ */
+export function assessSwap(policy: Policy, facts: {
+  amountYocto: bigint;
+  /** Everything else the transactions attach (storage deposits). */
+  extraYocto: bigint;
+  feeYocto: bigint;
+  availableYocto: bigint;
+  spentTodayYocto: bigint;
+  maxSwapYocto: bigint;
+}): SendCheck {
+  let blockReason: string | null = null;
+  if (policy.killed) blockReason = "The kill switch is on. Sending and swaps are stopped.";
+  else if (facts.amountYocto <= 0n) blockReason = "Amount must be greater than zero.";
+  else if (facts.amountYocto > facts.maxSwapYocto) blockReason = `Swaps from the app are capped at ${formatNear(facts.maxSwapYocto)} NEAR.`;
+  else if (facts.amountYocto > policy.perTxYocto) blockReason = `This is above your per-transaction limit of ${formatNear(policy.perTxYocto)} NEAR.`;
+  else if (facts.spentTodayYocto + facts.amountYocto > policy.dailyYocto) blockReason = `This would pass your daily limit of ${formatNear(policy.dailyYocto)} NEAR.`;
+  else if (facts.amountYocto + facts.extraYocto + facts.feeYocto > facts.availableYocto) blockReason = "Your available balance does not cover the swap plus storage deposits and fees.";
+  const warnings = ["This is a real swap on NEAR mainnet through NEAR Intents. The NEAR goes to a one-time 1Click deposit address."];
+  const phraseReasons = ["A swap sends NEAR to a one-time deposit address, so it always needs the confirm phrase."];
+  return { ok: blockReason === null, blockReason, warnings, phraseReasons, needsPhrase: true, allowlisted: false, similarTo: null };
+}
+
 export function defaultStoredPolicy(): StoredPolicy {
   return { ...DEFAULT_STORED_POLICY, allowlist: [] };
 }

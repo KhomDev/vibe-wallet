@@ -19,6 +19,15 @@ export type Pending =
   | { kind: "resume" }
   | { kind: "allow"; recipient: string; retryAmountNear?: string }
   | { kind: "scoped_key" }
+  | {
+      kind: "swap";
+      quote: import("@/lib/intents-swap-client").LiveQuote;
+      transactions: import("@/lib/near/wallet-connector").WalletTx[];
+      /** Everything the transactions attach: the swapped amount plus storage deposits. */
+      attachedYocto: string;
+      amountYocto: string;
+      check: SendCheck;
+    }
   | { kind: "limits"; perTxNear?: string; dailyNear?: string; thresholdNear?: string }
   | { kind: "schedule"; recipient: string; amountNear: string; cadence: "weekly_friday" | "daily" }
   | { kind: "price"; belowUsd: number; amountNear: string; toSymbol: "USDC" | "USDT" };

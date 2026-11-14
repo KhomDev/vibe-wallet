@@ -14,6 +14,7 @@ import {
 import { assessSend, phraseMatches, type Policy } from "../policy";
 import { parseNear } from "../units";
 import { SendError, signAndBroadcast } from "./broadcast";
+import type { WalletAction, WalletTx } from "./wallet-connector";
 import {
   accountExists,
   asSecret,
@@ -106,6 +107,46 @@ export async function executeScopedCall(input: {
     actions.functionCall(SCOPED_CALL_METHOD, { account_id: input.accountId }, 20_000_000_000_000n, 0n),
   ]));
   return { hash: sent.hash, feeYocto: sent.feeYocto, success: true, reconciled: sent.reconciled };
+}
+
+/**
+ * Sends prepared transactions with the browser key (used for an Intents swap, whose policy check the
+ * caller ran with assessSwap). Only Transfer and FunctionCall actions are accepted, and only to the
+ * receivers the caller allows.
+ */
+export async function executePrepared(input: {
+  accountId: string;
+  fullSecret: string;
+  expectedPublicKey: string;
+  transactions: WalletTx[];
+  allowedReceivers: string[];
+  userConfirmed: boolean;
+  onBeforeBroadcast?: () => void;
+}): Promise<SignedTx[]> {
+  if (!input.userConfirmed) throw new SendError("Signer refused: not confirmed.", false, "not-sent");
+  for (const tx of input.transactions) {
+    if (!input.allowedReceivers.includes(tx.receiverId)) throw new SendError(`Signer refused: unexpected receiver ${tx.receiverId}.`, false, "not-sent");
+  }
+  const secret = assertExpectedKey(input.fullSecret, input.expectedPublicKey);
+  return withAccountLock(input.accountId, async () => {
+    await assertFullAccessKey(input.accountId, input.expectedPublicKey);
+    const account = new Account(input.accountId, getProvider(), secret);
+    input.onBeforeBroadcast?.();
+    const results: SignedTx[] = [];
+    for (const tx of input.transactions) {
+      const sent = await signAndBroadcast(account, tx.receiverId, tx.actions.map(toNajAction));
+      results.push({ hash: sent.hash, feeYocto: sent.feeYocto, success: true, reconciled: sent.reconciled });
+    }
+    return results;
+  });
+}
+
+function toNajAction(action: WalletAction) {
+  if (action.type === "Transfer") return actions.transfer(BigInt(action.params.deposit));
+  if (action.type === "FunctionCall") {
+    return actions.functionCall(action.params.methodName, action.params.args, BigInt(action.params.gas), BigInt(action.params.deposit));
+  }
+  throw new SendError("Signer refused: unsupported action.", false, "not-sent");
 }
 
 export async function executeTransfer(input: {

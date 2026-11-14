@@ -23,6 +23,7 @@ export type WalletIntent =
   | { type: "price_rule"; belowUsd: number; amountNear: string; toSymbol: "USDC" | "USDT" }
   | { type: "run_agent" }
   | { type: "agent_status" }
+  | { type: "onchain_limits" }
   | { type: "unknown"; reason: string };
 
 const AMOUNT = "([0-9]+(?:\\.[0-9]+)?)";
@@ -100,6 +101,7 @@ export function parseIntent(input: string): WalletIntent {
   }
   if (/\b(help|what can you do|what can i say)\b/.test(text)) return { type: "help" };
   if (ALLOWLIST_QUERY.test(text)) return { type: "show_allowlist" };
+  if (/\b(on[- ]?chain (limits?|policy|rules)|triagepay|policy wallet|contract limits?)\b/.test(text)) return { type: "onchain_limits" };
   if (/\b(safety|limits|kill switch status)\b/.test(text)) return { type: "show_safety" };
   if (/\b(explain|what happened|what did i|last transaction|last tx)\b/.test(text)) {
     return { type: "explain_last" };
@@ -234,6 +236,7 @@ export function sanitizeIntent(value: unknown): WalletIntent | null {
     }
     case "run_agent":
     case "agent_status":
+    case "onchain_limits":
       return { type: value.type };
     case "schedule_send": {
       const amountNear = decimal(value.amountNear);
@@ -351,6 +354,7 @@ Allowed shapes:
 {"type":"price_rule","belowUsd":<number>,"amountNear":"<decimal>","toSymbol":"USDC"|"USDT"}
 {"type":"run_agent"}
 {"type":"agent_status"}
+{"type":"onchain_limits"}
 {"type":"unknown","reason":"<short>"}
 Rules:
 - amountNear is decimal NEAR, never yoctoNEAR.
@@ -362,4 +366,6 @@ Rules:
 - stop means the user wants the kill switch on. That also stops the agent.
 - show_allowlist lists the accounts the user may send to, with the send limits. Use it for "who can I send to", "show my allowlist", "list allow list entries", "my contacts", "allowed recipients".
 - allow adds one named account. Never use allow for a request to list or show the allowlist.
+- onchain_limits shows the limits a TriagePay policy-wallet contract enforces on chain ("show on-chain limits", "what does the contract allow").
+- quote_swap on mainnet drafts a real swap that the user must confirm with the phrase and the slide; never say it already executed.
 - If there is no wallet action, use unknown. Its reason is one short casual sentence (max 15 words), chill Gen Z tone, never formal, e.g. "yo, I only do wallet stuff, try asking your balance."`;

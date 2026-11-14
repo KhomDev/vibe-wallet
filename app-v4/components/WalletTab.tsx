@@ -50,6 +50,8 @@ export function WalletTab({
   demo,
   globalKilled,
   agentSlot,
+  custody,
+  connectedWallet,
 }: {
   accountId: string;
   availableNear: number;
@@ -83,6 +85,10 @@ export function WalletTab({
   demo?: boolean;
   globalKilled?: boolean;
   agentSlot?: ReactNode;
+  /** Who holds the key: this browser, the user's own wallet, or the demo server. */
+  custody?: "browser" | "wallet" | "demo";
+  /** Wallet Selector module id when a wallet is connected. */
+  connectedWallet?: string | null;
 }) {
   const [tokens, setTokens] = useState<{ symbol: string; subtitle: string; amount: string; mark: string }[]>(
     TOKENS.map((token) => ({ symbol: token.symbol, subtitle: token.subtitle, amount: "0.00", mark: token.mark })),
@@ -133,6 +139,7 @@ export function WalletTab({
         </div>
         <p className="mono mt-2 text-xs text-muted break-all">{accountId}</p>
         {demo ? <p className="mt-2 text-sm">Shared demo account · testnet only · key not in this browser</p> : null}
+        {connectedWallet ? <p className="mt-2 text-sm" data-testid="connected-wallet">Connected with {connectedWallet} · your wallet keeps the key and approves each payment</p> : null}
       </section>
       <div className="actions-3">
         <button className="pastel send" type="button" onClick={() => { pop(560); haptic(8); onSend(); }}>
@@ -174,7 +181,13 @@ export function WalletTab({
           </ul>
         )}
       </section>
-      {demo ? null : (
+      {connectedWallet ? (
+        <section className="glass grid gap-2">
+          <h2 className="text-lg font-semibold">This account</h2>
+          <button className="btn btn-ghost" type="button" onClick={onLock}>Disconnect {connectedWallet}</button>
+        </section>
+      ) : null}
+      {demo || connectedWallet ? null : (
         <section className="glass grid gap-2">
           <h2 className="text-lg font-semibold">This account</h2>
           {otherAccount ? (
@@ -205,6 +218,7 @@ export function WalletTab({
         hasScopedKeyOnChain={hasScopedKeyOnChain}
         onForget={onForget}
         globalKilled={globalKilled}
+        custody={custody ?? (demo ? "demo" : "browser")}
       />
     </div>
   );

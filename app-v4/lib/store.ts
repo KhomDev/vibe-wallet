@@ -93,12 +93,30 @@ export function addSpend(accountId: string, amountYocto: bigint): bigint {
 // warns before another send, so a retry after a timeout does not pay twice without the user knowing.
 const PENDING_KEY = "vibe.pending.v1";
 
-export type PendingSend = { hash: string; recipient: string; amountYocto: string; at: number };
+export type PendingSend = {
+  /** Empty while a browser wallet (redirect) has not reported a hash yet. */
+  hash: string;
+  recipient: string;
+  amountYocto: string;
+  at: number;
+  /** Set when the page left for a browser wallet to sign. */
+  viaRedirect?: boolean;
+  /** Set for a swap: the 1Click deposit address to poll after the wallet returns. */
+  depositAddress?: string;
+  toSymbol?: string;
+};
 
 export function loadPendingSend(accountId: string): PendingSend | null {
   const all = readJson<Record<string, PendingSend>>(PENDING_KEY) ?? {};
   const entry = all[accountId];
   return entry && typeof entry.hash === "string" ? entry : null;
+}
+
+/** Any account's pending redirect, used right after a browser wallet sends the user back. */
+export function loadRedirectPending(): { accountId: string; entry: PendingSend } | null {
+  const all = readJson<Record<string, PendingSend>>(PENDING_KEY) ?? {};
+  for (const [accountId, entry] of Object.entries(all)) if (entry?.viaRedirect) return { accountId, entry };
+  return null;
 }
 
 export function savePendingSend(accountId: string, entry: PendingSend | null): void {

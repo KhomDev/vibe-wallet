@@ -9,12 +9,23 @@ export type Session = {
   agentPublicKey: string | null;
   agentSecret: string | null;
   passphrase: string;
-  mode?: "owned" | "demo";
+  /** owned: key encrypted in this browser. connected: the user's own wallet signs. demo: server key. */
+  mode?: "owned" | "demo" | "connected";
   demoRecipient?: string;
+  /** Wallet Selector module id, for connected sessions. */
+  walletId?: string;
 };
 
 export function isDemoSession(session: Session | null | undefined): boolean {
   return session?.mode === "demo";
+}
+
+export function isConnectedSession(session: Session | null | undefined): boolean {
+  return session?.mode === "connected";
+}
+
+export function connectedSession(accountId: string, walletId: string): Session {
+  return { accountId, walletId, mode: "connected", fullPublicKey: "", fullSecret: "", agentPublicKey: null, agentSecret: null, passphrase: "" };
 }
 
 export async function sessionFromSlot(slot: AccountSlot, passphrase: string): Promise<Session> {

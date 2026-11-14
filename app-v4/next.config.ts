@@ -24,15 +24,19 @@ const connect = [
   origin(process.env.NEXT_PUBLIC_NEAR_RPC_URL),
 ].filter(Boolean);
 
+// Connected wallets (HOT, MyNearWallet, Intear) talk to their own HTTPS/WSS APIs and serve their
+// own icons, so connect-src and img-src allow any HTTPS origin. Scripts stay same-origin only.
+const walletConnect = ["https:", "wss:"];
+
 const csp = [
   "default-src 'self'",
   // Next.js inlines its bootstrap scripts; dev mode also needs eval for fast refresh.
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob:",
   "font-src 'self' data:",
-  `connect-src ${connect.join(" ")}${dev ? " ws: http://127.0.0.1:* http://localhost:*" : ""}`,
+  `connect-src ${[...connect, ...walletConnect].join(" ")}${dev ? " ws: http://127.0.0.1:* http://localhost:*" : ""}`,
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -40,7 +44,8 @@ const csp = [
   "form-action 'self'",
   // The wallet must never be framed: the slide-to-confirm control is a UI-redress target.
   "frame-ancestors 'none'",
-  "frame-src 'none'",
+  // Some wallet SDKs open their sign-in in an embedded HTTPS frame.
+  "frame-src https:",
 ].join("; ");
 
 const securityHeaders = [
@@ -49,7 +54,8 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "microphone=(self), camera=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  // Popup wallets post their result back to this window, so popups keep their opener.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
 ];
 
 const nextConfig: NextConfig = {

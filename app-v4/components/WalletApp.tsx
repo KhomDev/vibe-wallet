@@ -4,15 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { suggestTestnetAccountId } from "@/lib/account-id";
 import { addAgentRule, previewDemoSend, requestQuote, resolveIntent, runAgentNow, sendDemoTransfer, updateDemoPolicy, fetchAgentStatus, type IntentSource, type QuoteView } from "@/lib/client";
 import type { AgentLog, AgentRule } from "@/lib/agent-types";
-import { explorerAccountUrl, explorerTxUrl, NETWORK_ID, SCOPED_CONTRACT_ID } from "@/lib/config";
+import { explorerAccountUrl, explorerTxUrl, IS_MAINNET, NETWORK_ID, SCOPED_CONTRACT_ID, SWAP_MAX_NEAR, WRAP_CONTRACT_ID } from "@/lib/config";
 import { publicError } from "@/lib/errors";
 import { explainTransaction, mergeHistory, type HistoryItem } from "@/lib/history";
 import type { WalletIntent } from "@/lib/intent";
 import { accountExists, createFundedAccount, estimateTransferFee, fetchHistory, getProvider, isScopedKey, listKeys, readBalance, type BalanceView, type KeySummary } from "@/lib/near/read";
-import { addScopedKey, executeScopedCall, executeTransfer, SendError } from "@/lib/near/signer";
-import { assessSend, normalizePhrase, phraseMatches, toPolicy, type StoredPolicy } from "@/lib/policy";
-import { encryptSlot, isDemoSession, sessionFromSlot, slotFromSession, type Session } from "@/lib/session";
-import { addSpend, clearVault, loadActivity, loadPendingSend, loadPolicy, loadSpend, rememberActivity, savePendingSend, savePolicy, saveVault, type VaultRecord } from "@/lib/store";
+import { addScopedKey, executePrepared, executeScopedCall, executeTransfer, SendError } from "@/lib/near/signer";
+import { disconnectWallet, takeWalletRedirect, walletSend } from "@/lib/near/wallet-connector";
+import { walletTransfer } from "@/lib/near/wallet-send";
+import { buildSwapTransactions, readSwapChainState, requestLiveQuote, submitDeposit, verifyLiveQuote, waitForSwap } from "@/lib/intents-swap-client";
+import { assessSend, assessSwap, normalizePhrase, phraseMatches, toPolicy, type StoredPolicy } from "@/lib/policy";
+import { encryptSlot, isConnectedSession, isDemoSession, sessionFromSlot, slotFromSession, type Session } from "@/lib/session";
+import { addSpend, clearVault, loadActivity, loadPendingSend, loadPolicy, loadRedirectPending, loadSpend, rememberActivity, savePendingSend, savePolicy, saveVault, type VaultRecord } from "@/lib/store";
 import { formatNear, parseNear } from "@/lib/units";
 import { chime, haptic, pop, setSoundMuted, soundMuted } from "@/lib/sounds";
 import { speak, speakAsync, startVoiceInput, stopSpeaking, unlockSpeech, voiceInputSupported } from "@/lib/voice";
@@ -29,10 +32,16 @@ import { SetupScreen } from "./SetupScreen";
 import { WalletTab } from "./WalletTab";
 import { AgentPanel } from "./AgentPanel";
 import { AllowlistCard } from "./AllowlistCard";
+import { OnChainLimitsCard } from "./OnChainLimitsCard";
 
 type Turn = { id: string; role: "user" | "assistant"; text: string; source?: IntentSource; note?: string | null };
 
 const AGENT_DEMO_ONLY = "the agent runs on the shared demo account only. open the demo to try scheduled payments and price rules.";
+const STORAGE_DEPOSIT_NOTE = "storage deposits";
+
+async function view<T>(contractId: string, method: string, args: Record<string, unknown>): Promise<T> {
+  return (await getProvider().callFunction({ contractId, method, args })) as unknown as T;
+}
 const PENDING_SEND_MS = 15 * 60 * 1000;
 const EXAMPLES = [
   "What's my balance?",
@@ -77,6 +86,8 @@ export function WalletApp() {
   const [agentRules, setAgentRules] = useState<AgentRule[]>([]);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [globalKilled, setGlobalKilled] = useState(false);
+  const [limitsRefresh, setLimitsRefresh] = useState(0);
+  const [swapStatusText, setSwapStatusText] = useState<string | null>(null);
   const busyRef = useRef(busy);
   const sessionRef = useRef(session);
   const vaultRef = useRef(vault);
@@ -145,6 +156,10 @@ export function WalletApp() {
           }
         } else {
           setSpent(loadSpend(accountId));
+          if (isConnectedSession(sessionRef.current)) {
+            const returned = await handleWalletReturn(accountId);
+            if (returned && !cancelled) sayRef.current(returned, null, null);
+          }
           const settled = await reconcilePendingSend(accountId);
           if (settled && !cancelled) sayRef.current(settled, null, null);
         }
@@ -169,6 +184,11 @@ export function WalletApp() {
   async function reconcilePendingSend(accountId: string): Promise<string | null> {
     const entry = loadPendingSend(accountId);
     if (!entry) return null;
+    if (!entry.hash) {
+      // Waiting for a browser wallet that never came back: keep the spend counted, forget the record later.
+      if (Date.now() - entry.at > PENDING_SEND_MS) savePendingSend(accountId, null);
+      return null;
+    }
     try {
       const found = await getProvider().viewTransactionStatus({ txHash: entry.hash, accountId, waitUntil: "EXECUTED" }) as unknown as { status?: unknown };
       savePendingSend(accountId, null);
@@ -183,6 +203,158 @@ export function WalletApp() {
       }
       return null;
     }
+  }
+
+  // A browser wallet (MyNearWallet) signs on its own page and sends the user back with the result.
+  async function handleWalletReturn(accountId: string): Promise<string | null> {
+    const result = takeWalletRedirect();
+    const pendingRecord = loadRedirectPending();
+    if (!result || !pendingRecord || pendingRecord.accountId !== accountId) return null;
+    const { entry } = pendingRecord;
+    if (result.error || !result.hashes.length) {
+      addSpend(accountId, -BigInt(entry.amountYocto));
+      savePendingSend(accountId, null);
+      setSpent(loadSpend(accountId));
+      return entry.depositAddress ? "swap cancelled in your wallet, nothing moved." : "cancelled in your wallet, nothing sent.";
+    }
+    const hash = result.hashes[result.hashes.length - 1];
+    savePendingSend(accountId, null);
+    setSpent(loadSpend(accountId));
+    if (entry.depositAddress) {
+      void finishSwap(entry.depositAddress, hash, entry.toSymbol || "");
+      return "wallet signed the swap deposit. waiting for NEAR Intents to settle…";
+    }
+    setReceipt({ hash, recipient: entry.recipient, amountNear: formatNear(BigInt(entry.amountYocto)), feeNear: "" });
+    setFlash("done");
+    window.setTimeout(() => setFlash(null), 8000);
+    return `done, your wallet sent ${formatNear(BigInt(entry.amountYocto))} to ${entry.recipient} ✌️`;
+  }
+
+  async function finishSwap(depositAddress: string, depositTx: string, toSymbol: string) {
+    await submitDeposit({ txHash: depositTx, depositAddress });
+    setSwapStatusText("Swap deposited. Waiting for NEAR Intents…");
+    const final = await waitForSwap(depositAddress, (status) => setSwapStatusText(`Swap status: ${status}`));
+    setSwapStatusText(null);
+    const accountId = sessionRef.current?.accountId;
+    if (accountId) setBalance(await readBalance(accountId).catch(() => null));
+    const out = final.detail && typeof final.detail === "object" ? String((final.detail as Record<string, unknown>).amountOutFormatted ?? "") : "";
+    sayRef.current(
+      final.success
+        ? `swap done ✅ ${out ? `${out} ${toSymbol} ` : ""}delivered to your account.`
+        : final.status === "REFUNDED"
+          ? "the swap was refunded to your account, nothing lost but gas."
+          : `swap status: ${final.status}. check the explorer link.`,
+      null,
+      null,
+    );
+    rememberLocal({
+      hash: depositTx,
+      signer: accountId ?? "",
+      receiver: WRAP_CONTRACT_ID,
+      actions: ["FUNCTION_CALL"],
+      methods: ["ft_transfer"],
+      depositYocto: null,
+      feeYocto: null,
+      success: final.success,
+      timestampMs: Date.now(),
+      source: "local",
+    });
+    setReceipt({ hash: depositTx, recipient: depositAddress, amountNear: "swap", feeNear: "" });
+    setFlash(final.success ? "done" : null);
+  }
+
+  // Executed NEAR Intents swap (mainnet). The quote is verified against the request, the exact
+  // transactions are built and shown, and the policy treats it like a send to an unknown account.
+  async function draftSwap(current: Session, amountNear: string, toSymbol: "USDT" | "USDC" | "ETH", nextSource: IntentSource, nextNote: string | null) {
+    setBusy("Asking NEAR Intents for an executable quote…");
+    const amountYocto = parseNear(amountNear);
+    const quote = await requestLiveQuote({ accountId: current.accountId, amountNear, toSymbol });
+    const problems = verifyLiveQuote(quote, { accountId: current.accountId, amountYocto, toSymbol });
+    if (problems.length) {
+      say(`swap refused: ${problems[0].toLowerCase()}`, nextSource, nextNote);
+      return;
+    }
+    const [chain, nextBalance, feeYocto] = await Promise.all([
+      readSwapChainState(view, current.accountId, quote.destinationAsset, WRAP_CONTRACT_ID),
+      readBalance(current.accountId),
+      estimateTransferFee(false),
+    ]);
+    if (!nextBalance) throw new Error("Your account is not visible on mainnet.");
+    setBalance(nextBalance);
+    const built = buildSwapTransactions(quote, current.accountId, chain, WRAP_CONTRACT_ID);
+    const check = assessSwap(toPolicy(policyRef.current), {
+      amountYocto,
+      extraYocto: built.attachedYocto > amountYocto ? built.attachedYocto - amountYocto : 0n,
+      feeYocto: feeYocto * 8n,
+      availableYocto: BigInt(nextBalance.availableYocto),
+      spentTodayYocto: loadSpend(current.accountId),
+      maxSwapYocto: parseNear(SWAP_MAX_NEAR),
+    });
+    setQuote(null);
+    setPending({ kind: "swap", quote, transactions: built.transactions, attachedYocto: built.attachedYocto.toString(), amountYocto: amountYocto.toString(), check });
+    setPhrase("");
+    say(check.blockReason
+      ? `nah, blocked: ${check.blockReason.replace(/\.$/, "").toLowerCase()}.`
+      : `real swap: ${quote.amountInFormatted} NEAR for about ${quote.amountOutFormatted} ${toSymbol}. type the phrase, then slide.`, nextSource, nextNote);
+    setTab("orb");
+  }
+
+  async function executeSwap(current: Session, card: Extract<Pending, { kind: "swap" }>, policyNow: ReturnType<typeof toPolicy>) {
+    if (Date.parse(card.quote.deadline) < Date.now() + 60_000) throw new Error("This quote is about to expire. Ask for the swap again.");
+    const amountYocto = BigInt(card.amountYocto);
+    const [nextBalance, feeYocto] = await Promise.all([readBalance(current.accountId), estimateTransferFee(false)]);
+    const check = assessSwap(policyNow, {
+      amountYocto,
+      extraYocto: BigInt(card.attachedYocto) - amountYocto,
+      feeYocto: feeYocto * 8n,
+      availableYocto: BigInt(nextBalance?.availableYocto ?? "0"),
+      spentTodayYocto: loadSpend(current.accountId),
+      maxSwapYocto: parseNear(SWAP_MAX_NEAR),
+    });
+    if (check.blockReason) throw new Error(check.blockReason);
+    const destination = card.quote.destinationAsset.replace(/^nep141:/, "");
+    let hashes: string[] = [];
+    let reserved = false;
+    const reserve = () => {
+      addSpend(current.accountId, amountYocto);
+      reserved = true;
+      savePendingSend(current.accountId, { hash: "", recipient: card.quote.depositAddress, amountYocto: card.amountYocto, at: Date.now(), viaRedirect: true, depositAddress: card.quote.depositAddress, toSymbol: card.quote.toSymbol });
+    };
+    try {
+      if (isConnectedSession(current)) {
+        setBusy("Approve the swap in your wallet…");
+        reserve();
+        const outcome = await walletSend(current.accountId, card.transactions);
+        if (outcome.redirected) return; // continues in handleWalletReturn
+        hashes = outcome.hashes;
+      } else {
+        setBusy("Signing the swap in this browser…");
+        const sent = await executePrepared({
+          accountId: current.accountId,
+          fullSecret: current.fullSecret,
+          expectedPublicKey: current.fullPublicKey,
+          transactions: card.transactions,
+          allowedReceivers: [WRAP_CONTRACT_ID, destination],
+          userConfirmed: true,
+          onBeforeBroadcast: reserve,
+        });
+        hashes = sent.map((item) => item.hash);
+      }
+    } catch (err) {
+      if (reserved && !(err instanceof SendError && err.outcome === "unknown")) {
+        addSpend(current.accountId, -amountYocto);
+        savePendingSend(current.accountId, null);
+      }
+      setSpent(loadSpend(current.accountId));
+      throw err;
+    }
+    savePendingSend(current.accountId, null);
+    setSpent(loadSpend(current.accountId));
+    setPending(null);
+    const depositTx = hashes[hashes.length - 1];
+    if (!depositTx) throw new Error("The wallet did not return a transaction hash. Check your history.");
+    say(`swap deposit sent (${depositTx.slice(0, 8)}…). waiting for NEAR Intents to settle.`, null, null);
+    await finishSwap(card.quote.depositAddress, depositTx, card.quote.toSymbol);
   }
 
   async function addScopedKeyNow() {
@@ -357,7 +529,17 @@ export function WalletApp() {
       say(items[0] ? explainTransaction(items[0], current.accountId) : "can't see any tx on this account yet.", nextSource, nextNote, items[0] ? "here's your last tx, details on screen." : undefined);
       return;
     }
+    if (intent.type === "onchain_limits") {
+      setLimitsRefresh((value) => value + 1);
+      setTab("wallet");
+      say("those limits live in a TriagePay contract, so the chain enforces them. details are in the wallet tab.", nextSource, nextNote);
+      return;
+    }
     if (intent.type === "quote_swap") {
+      if (IS_MAINNET && !isDemoSession(current)) {
+        await draftSwap(current, intent.amountNear, intent.toSymbol, nextSource, nextNote);
+        return;
+      }
       const nextQuote = await requestQuote({ accountId: current.accountId, amountNear: intent.amountNear, toSymbol: intent.toSymbol });
       setQuote(nextQuote);
       say(`quote only: ${nextQuote.amountInFormatted} NEAR gets you about ${nextQuote.amountOutFormatted} ${nextQuote.destinationSymbol}, nothing signed.`, nextSource, nextNote);
@@ -556,6 +738,11 @@ export function WalletApp() {
         await addScopedKeyNow();
         return;
       }
+      if (card.kind === "swap") {
+        if (card.check.blockReason) return;
+        await executeSwap(current, card, parsed);
+        return;
+      }
       if (card.kind === "allow") {
         if (isDemoSession(current)) {
           const view = await updateDemoPolicy({ allow: card.recipient, phrase });
@@ -639,8 +826,48 @@ export function WalletApp() {
           return;
         }
       }
-      setBusy(`Signing in this browser and sending to ${NETWORK_ID}…`);
       const amountYocto = BigInt(card.amountYocto);
+      if (isConnectedSession(current)) {
+        setBusy("Approve the send in your wallet…");
+        let walletReserved = false;
+        try {
+          const outcome = await walletTransfer({
+            accountId: current.accountId,
+            recipient: card.recipient,
+            amountYocto,
+            policy: parsed,
+            spentTodayYocto: loadSpend(current.accountId),
+            userConfirmed: true,
+            confirmationPhrase: phrase,
+            onBeforeBroadcast: () => {
+              addSpend(current.accountId, amountYocto);
+              walletReserved = true;
+              savePendingSend(current.accountId, { hash: "", recipient: card.recipient, amountYocto: card.amountYocto, at: Date.now(), viaRedirect: true });
+            },
+          });
+          if (outcome.redirected) return;
+          savePendingSend(current.accountId, null);
+          const hash = outcome.hashes[0] ?? "";
+          setSpent(loadSpend(current.accountId));
+          setReceipt({ hash, recipient: card.recipient, amountNear: card.amountNear, feeNear: "" });
+          if (hash) rememberLocal({ hash, signer: current.accountId, receiver: card.recipient, actions: ["TRANSFER"], methods: [], depositYocto: card.amountYocto, feeYocto: null, success: true, timestampMs: Date.now(), source: "local" });
+          setPending(null);
+          setFlash("done");
+          chime();
+          window.setTimeout(() => setFlash(null), 8000);
+          setBalance(await readBalance(current.accountId));
+          say(`done, your wallet sent ${card.amountNear} to ${card.recipient} ✌️`, null, null);
+          return;
+        } catch (err) {
+          if (walletReserved && !(err instanceof SendError && err.outcome === "unknown")) {
+            addSpend(current.accountId, -amountYocto);
+            savePendingSend(current.accountId, null);
+          }
+          setSpent(loadSpend(current.accountId));
+          throw err;
+        }
+      }
+      setBusy(`Signing in this browser and sending to ${NETWORK_ID}…`);
       let reserved = false;
       let result;
       try {
@@ -1002,9 +1229,14 @@ export function WalletApp() {
       </Stage>
     );
   }
-  if (!session || (!vault && !isDemoSession(session))) {
+  if (!session || (!vault && !isDemoSession(session) && !isConnectedSession(session))) {
     return <SetupScreen
       onReady={(nextSession, nextVault) => { setSession(nextSession); setVault(nextVault); }}
+      onConnected={(nextSession) => {
+        sessionRef.current = nextSession;
+        setSession(nextSession);
+        setVault(null);
+      }}
       onDemo={(nextSession, nextPolicy) => {
         sessionRef.current = nextSession;
         setSession(nextSession);
@@ -1020,7 +1252,8 @@ export function WalletApp() {
     : listening ? "listening"
     : transcribing || busy ? "thinking"
     : pending?.kind === "send" && pending.check.blockReason ? "blocked"
-    : pending?.kind === "send" || pending?.kind === "schedule" || pending?.kind === "price" ? "confirming"
+    : pending?.kind === "swap" && pending.check.blockReason ? "blocked"
+    : pending?.kind === "send" || pending?.kind === "schedule" || pending?.kind === "price" || pending?.kind === "swap" ? "confirming"
     : policy.killed ? "blocked"
     : flash === "done" ? "done"
     : "idle";
@@ -1040,8 +1273,10 @@ export function WalletApp() {
   const available = balance ? Number(balance.availableNear) : 0;
   const lastReply = [...turns].reverse().find((turn) => turn.role === "assistant");
   const sendPending = pending?.kind === "send" ? pending : null;
-  const phraseOk = !sendPending?.check.needsPhrase || phraseMatches(policy, phrase);
-  const showBalance = !sendPending && flash !== "done";
+  const swapPending = pending?.kind === "swap" ? pending : null;
+  const connected = isConnectedSession(session);
+  const phraseOk = sendPending ? (!sendPending.check.needsPhrase || phraseMatches(policy, phrase)) : swapPending ? phraseMatches(policy, phrase) : true;
+  const showBalance = !sendPending && !swapPending && flash !== "done";
 
   return (
     <Stage>
@@ -1150,7 +1385,32 @@ export function WalletApp() {
                 onClose={() => setAllowCard(false)}
               />
             ) : null}
-            {pending && pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" ? (
+            {swapPending ? (
+              <section className="glass mt-3 grid gap-2" data-testid="swap-card">
+                <h2 className="text-lg font-semibold">Swap on NEAR mainnet</h2>
+                <p className="text-2xl font-semibold">{swapPending.quote.amountInFormatted} NEAR → about {swapPending.quote.amountOutFormatted} {swapPending.quote.toSymbol}</p>
+                <p className="text-sm">At least {swapPending.quote.minAmountOutFormatted} {swapPending.quote.toSymbol} (1% slippage), delivered to <span className="mono break-all">{session.accountId}</span>. A failed swap refunds the same account.</p>
+                <p className="text-sm">Pays: 1Click deposit address <span className="mono break-all">{swapPending.quote.depositAddress}</span>. Quote valid until {new Date(swapPending.quote.deadline).toLocaleTimeString()}.</p>
+                <details className="text-xs">
+                  <summary>Exactly what will be signed ({swapPending.transactions.length} transaction{swapPending.transactions.length > 1 ? "s" : ""}, {formatNear(BigInt(swapPending.attachedYocto), 6)} NEAR attached incl. {STORAGE_DEPOSIT_NOTE})</summary>
+                  <ul className="mono mt-1 grid gap-1 break-all">
+                    {swapPending.transactions.flatMap((tx, index) => tx.actions.map((action, inner) => (
+                      <li key={`${index}-${inner}`}>{tx.receiverId}: {action.type === "FunctionCall" ? `${action.params.methodName}(${JSON.stringify(action.params.args)}) deposit ${action.params.deposit} yocto` : `transfer ${action.params.deposit} yocto`}</li>
+                    )))}
+                  </ul>
+                </details>
+                {swapPending.check.warnings.map((warning) => <p key={warning} className="banner banner-warn">{warning}</p>)}
+                {swapPending.check.blockReason ? <p className="banner banner-danger" role="alert">{swapPending.check.blockReason}</p> : (
+                  <label className="grid gap-1 text-sm">
+                    Type your confirm phrase (set in the Safety tab)
+                    <input className="field" data-testid="swap-phrase" type="password" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
+                  </label>
+                )}
+                <button className="btn btn-ghost" type="button" onClick={() => { setPending(null); say("cool, swap cancelled. nothing signed.", null, null); }}>Cancel</button>
+              </section>
+            ) : null}
+            {swapStatusText ? <p className="banner banner-warn mt-2" role="status">{swapStatusText}</p> : null}
+            {pending && pending.kind !== "send" && pending.kind !== "schedule" && pending.kind !== "price" && pending.kind !== "swap" ? (
               <ActionCards
                 pending={pending}
                 phrase={phrase}
@@ -1197,7 +1457,7 @@ export function WalletApp() {
           <WalletTab
             accountId={session.accountId}
             demo={demo}
-            agentSlot={demo ? (
+            agentSlot={<>{demo ? (
               <AgentPanel
                 rules={agentRules}
                 logs={agentLogs}
@@ -1216,7 +1476,7 @@ export function WalletApp() {
                 <h2 className="text-lg font-semibold">Autonomous agent</h2>
                 <p className="text-sm text-muted">Scheduled payments and price rules run on the shared demo account, with the demo&apos;s limits. They are not available for a personal wallet in this build.</p>
               </section>
-            )}
+            )}<OnChainLimitsCard refreshKey={limitsRefresh} /></>}
             availableNear={available}
             nearPrice={nearPrice}
             hidden={hidden}
@@ -1230,6 +1490,7 @@ export function WalletApp() {
             spentTodayNear={formatNear(spent)}
             keys={keys}
             hasAgentKey={Boolean(session.agentSecret)}
+            custody={demo ? "demo" : connected ? "wallet" : "browser"}
             busy={Boolean(busy)}
             onPolicy={(next) => commitPolicy(next)}
             onAllow={(id) => { setPending({ kind: "allow", recipient: id }); setPhrase(""); setTab("orb"); }}
@@ -1248,7 +1509,13 @@ export function WalletApp() {
             hasScopedKeyOnChain={keys.some(isScopedKey) || Boolean(session.agentPublicKey)}
             globalKilled={globalKilled}
             onForget={forgetWallet}
-            onLock={() => { stopMic(); stopSpeaking(); setSession(null); }}
+            onLock={() => {
+              stopMic();
+              stopSpeaking();
+              if (connected) void disconnectWallet();
+              setSession(null);
+            }}
+            connectedWallet={connected ? session.walletId ?? "wallet" : null}
             otherAccount={vault?.other?.accountId ?? null}
             onCreateRecipient={() => void createRecipient()}
             onSwitch={() => void switchAccounts()}
@@ -1259,18 +1526,21 @@ export function WalletApp() {
             <h2 className="text-lg font-semibold">Receive</h2>
             <p className="mono">{session.accountId}</p>
             <button className="btn btn-primary" type="button" onClick={() => void navigator.clipboard.writeText(session.accountId)}>Copy account id</button>
-            <a className="underline" href={explorerAccountUrl(session.accountId)} target="_blank" rel="noreferrer">View on testnet explorer</a>
+            <a className="underline" href={explorerAccountUrl(session.accountId)} target="_blank" rel="noreferrer">View on {NETWORK_ID} explorer</a>
             <button className="btn btn-ghost" type="button" onClick={() => setSheet(null)}>Close</button>
           </section>
         ) : null}
         {sheet === "swap" ? (
           <form className="glass mt-3 grid gap-2" onSubmit={(event) => {
             event.preventDefault();
-            void requestQuote({ accountId: session.accountId, amountNear: swapAmount, toSymbol: swapSymbol })
-              .then((next) => { setQuote(next); setSheet(null); setTab("orb"); say(`quote only: ${next.amountInFormatted} NEAR gets you about ${next.amountOutFormatted} ${next.destinationSymbol}.`, null, null); })
-              .catch((err) => setError(publicError(err)));
+            setSheet(null);
+            setTab("orb");
+            setBusy("Getting the quote…");
+            void applyIntent({ type: "quote_swap", amountNear: swapAmount.trim(), toSymbol: swapSymbol }, "local-fallback", null)
+              .catch((err) => setError(publicError(err)))
+              .finally(() => setBusy(null));
           }}>
-            <h2 className="text-lg font-semibold">Swap quote</h2>
+            <h2 className="text-lg font-semibold">{IS_MAINNET && !demo ? "Swap (NEAR Intents, mainnet)" : "Swap quote"}</h2>
             <input className="field" value={swapAmount} onChange={(event) => setSwapAmount(event.target.value)} aria-label="Amount in NEAR" />
             <select className="field" value={swapSymbol} onChange={(event) => setSwapSymbol(event.target.value as "USDT" | "USDC" | "ETH")}>
               <option>USDT</option>
@@ -1282,11 +1552,11 @@ export function WalletApp() {
           </form>
         ) : null}
       </div>
-      {(sendPending && !sendPending.check.blockReason) || pending?.kind === "schedule" || pending?.kind === "price" ? (
+      {(sendPending && !sendPending.check.blockReason) || (swapPending && !swapPending.check.blockReason) || pending?.kind === "schedule" || pending?.kind === "price" ? (
         <div className="slider-shell" data-testid="slide-confirm">
           <SlideConfirm
-            disabled={(Boolean(sendPending) && !phraseOk) || Boolean(busy)}
-            hint={sendPending && !phraseOk ? (demo ? `Type "${policy.confirmPhrase}" to unlock` : "Type your confirm phrase to unlock") : busy ? "Working…" : undefined}
+            disabled={((Boolean(sendPending) || Boolean(swapPending)) && !phraseOk) || Boolean(busy)}
+            hint={(sendPending || swapPending) && !phraseOk ? (demo ? `Type "${policy.confirmPhrase}" to unlock` : "Type your confirm phrase to unlock") : busy ? "Working…" : undefined}
             onConfirm={() => void confirmPending()}
           />
         </div>

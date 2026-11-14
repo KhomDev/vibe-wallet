@@ -42,6 +42,7 @@ export function SafetyPanel({
   onForget,
   demo,
   globalKilled,
+  custody = "browser",
 }: {
   policy: StoredPolicy;
   spentTodayNear: string;
@@ -61,6 +62,7 @@ export function SafetyPanel({
   onForget: () => void;
   demo?: boolean;
   globalKilled?: boolean;
+  custody?: "browser" | "wallet" | "demo";
 }) {
   const [perTx, setPerTx] = useState(policy.perTxNear);
   const [daily, setDaily] = useState(policy.dailyNear);
@@ -133,7 +135,9 @@ export function SafetyPanel({
         <h2 className="text-lg font-semibold">Safety</h2>
         <p className="text-sm text-muted">{demo
           ? "This is the shared testnet demo. The private key stays on the server, never in this browser. The allowlist, per-send and daily caps, per-network and global caps, and rate limits are enforced on the server. Your stop switch stops your sends and your agent rules."
-          : "The assistant can only propose an action. Signing happens in this browser, after these checks run again. The full-access key is encrypted here."}</p>
+          : custody === "wallet"
+            ? "The assistant can only propose an action. These limits run again right before the app asks your wallet to sign, so it never asks for anything outside them. Your wallet keeps the key and shows its own confirmation."
+            : "The assistant can only propose an action. Signing happens in this browser, after these checks run again. The full-access key is encrypted here."}</p>
         <p className="text-sm">Sent today: <strong>{spentTodayNear} NEAR</strong> of {policy.dailyNear} NEAR.{demo ? " Demo caps: 0.3 NEAR per send and 2 NEAR per day per visitor." : ""}</p>
         {globalKilled ? <p className="banner banner-danger">The operator has paused the whole demo. Balance, history and quotes still work.</p> : null}
         <button className="btn btn-danger" type="button" disabled={Boolean(globalKilled)} onClick={policy.killed ? onResume : onKill}>
@@ -180,7 +184,7 @@ export function SafetyPanel({
         </div>
         <p className="text-xs text-muted">Adding someone opens a card that needs your confirm phrase. Removing someone does not.</p>
       </section>
-      {demo ? null : (
+      {demo || custody === "wallet" ? null : (
         <section className="card grid gap-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">On-chain keys</h2>
@@ -212,7 +216,7 @@ export function SafetyPanel({
           )}
         </section>
       )}
-      {demo ? null : (
+      {demo || custody === "wallet" ? null : (
         <section className="card grid gap-3">
           <h2 className="text-lg font-semibold">Remove wallet from this browser</h2>
           <label className="grid gap-1 text-sm">

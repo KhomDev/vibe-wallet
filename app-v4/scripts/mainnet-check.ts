@@ -12,7 +12,10 @@
  *   3. the account has a full-access key on chain (what executeTransfer verifies before signing);
  *   4. send reconciliation: the proof transactions are looked up by hash exactly as the signer
  *      does after a timeout, and are reported as landed;
- *   5. a NEAR Intents 1Click quote with dry: true (quote only, no deposit address, no trade).
+ *   5. a NEAR Intents 1Click quote with dry: true (quote only, no deposit address, no trade);
+ *   6. the TriagePay policy wallet's limits, read from its contract (view calls);
+ *   7. the confirm-card swap up to the signature: an executable quote (dry: false) is verified and the
+ *      exact transactions are built from the account's chain state. They are not signed or sent.
  */
 import { writeFileSync } from "node:fs";
 
@@ -102,8 +105,57 @@ async function main() {
     check("NEAR Intents 1Click quote with dry: true", false, err instanceof Error ? err.message.slice(0, 160) : String(err));
   }
 
+  // 6. TriagePay policy wallet: limits the chain enforces.
+  let onchain: unknown = null;
+  try {
+    const { readPolicyWallet, formatTokenAmount } = await import("../lib/near/policy-wallet");
+    const policyWallet = await readPolicyWallet();
+    onchain = policyWallet;
+    const agent = policyWallet.agent;
+    check(
+      "TriagePay policy wallet limits read from chain",
+      Boolean(agent) && !policyWallet.paused,
+      agent
+        ? `${policyWallet.walletId}: agent ${policyWallet.agentId} ${agent.active ? "active" : "revoked"}, per payment ${formatTokenAmount(agent.perCallMax, policyWallet.decimals)} wNEAR, per day ${formatTokenAmount(agent.dailyMax, policyWallet.decimals)} wNEAR, payees [${agent.payees.join(", ")}]`
+        : "no agent",
+    );
+  } catch (err) {
+    check("TriagePay policy wallet limits read from chain", false, err instanceof Error ? err.message.slice(0, 160) : String(err));
+  }
+
+  // 7. The confirm-card swap, up to the signature: an executable quote, verified, and the exact
+  //    transactions the user's wallet would be asked to sign. Nothing is signed or sent, and no
+  //    NEAR moves; 1Click only records a quote and a deposit address that expires unused.
+  let swapPlan: unknown = null;
+  try {
+    const { fetchLiveQuote } = await import("../lib/server/intents-api");
+    const { buildSwapTransactions, readSwapChainState, verifyLiveQuote } = await import("../lib/intents-swap-client");
+    const { assessSwap } = await import("../lib/policy");
+    const amountYocto = parseNear("0.03");
+    const live = await fetchLiveQuote({ accountId: account, amountYocto, toSymbol: "USDC" });
+    const problems = verifyLiveQuote(live, { accountId: account, amountYocto, toSymbol: "USDC" });
+    check("executable 1Click quote (dry: false) matches the request", problems.length === 0, problems.join(" ") || `0.03 NEAR -> about ${live.amountOutFormatted} USDC (min ${live.minAmountOutFormatted}), deposit address ${live.depositAddress.slice(0, 12)}…, delivers to and refunds ${account}`);
+    const view = async <T,>(contractId: string, method: string, args: Record<string, unknown>) => (await getProvider().callFunction({ contractId, method, args })) as unknown as T;
+    const chain = await readSwapChainState(view, account, live.destinationAsset, "wrap.near");
+    const built = buildSwapTransactions(live, account, chain, "wrap.near");
+    const swapCheck = assessSwap(toPolicy({ ...defaultStoredPolicy(), perTxNear: "0.05", dailyNear: "0.2" }), {
+      amountYocto,
+      extraYocto: built.attachedYocto - amountYocto,
+      feeYocto: feeYocto * 8n,
+      availableYocto: BigInt(balance?.availableYocto ?? "0"),
+      spentTodayYocto: 0n,
+      maxSwapYocto: parseNear("1"),
+    });
+    const actions = built.transactions.flatMap((tx) => tx.actions.map((action) => `${tx.receiverId}.${action.type === "FunctionCall" ? action.params.methodName : "transfer"}`));
+    check("swap policy (0.05 NEAR cap): allowed, phrase required", swapCheck.ok && swapCheck.needsPhrase, swapCheck.blockReason ?? `wNEAR held ${formatNear(chain.wrappedYocto)}; registered on wrap.near ${chain.userOnWrap}, on USDC ${chain.userOnDestination}`);
+    check("exact unsigned swap transactions built", built.transactions.length >= 1 && actions[actions.length - 1] === "wrap.near.ft_transfer", `${built.transactions.length} transaction(s): ${actions.join(", ")}; attaches ${formatNear(built.attachedYocto)} NEAR in total`);
+    swapPlan = { quote: { ...live, depositAddress: `${live.depositAddress.slice(0, 12)}…` }, chain: { ...chain, wrappedYocto: chain.wrappedYocto.toString() }, actions, attachedYocto: built.attachedYocto.toString(), signed: false };
+  } catch (err) {
+    check("executable 1Click quote and unsigned swap", false, err instanceof Error ? err.message.slice(0, 200) : String(err));
+  }
+
   const failed = checks.filter((item) => !item.ok).length;
-  const report = { network: "mainnet", rpc: RPC_URL, account, recipient, at: new Date().toISOString(), signed: 0, broadcast: 0, failed, checks };
+  const report = { network: "mainnet", rpc: RPC_URL, account, recipient, at: new Date().toISOString(), signed: 0, broadcast: 0, failed, checks, onchain, swapPlan };
   if (outPath) writeFileSync(outPath, JSON.stringify(report, null, 2) + "\n");
   console.log(`\n${checks.length - failed}/${checks.length} passed. Nothing was signed or broadcast.`);
   process.exit(failed ? 1 : 0);

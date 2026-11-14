@@ -67,7 +67,9 @@ Mobile (390×844).
 
 <!-- PROMO_VIDEO_SLOT: keep this heading. Replace the placeholder line below with a 16:9 embed (or a link to the file) when the final render is ready. The 9:16 cut is for the X submission post. Do not delete these markers. -->
 
-_Official 16:9 demo video will be embedded here._
+https://github.com/user-attachments/assets/5e3eed26-8826-48db-9918-efe39baf3678
+
+Also on X: https://x.com/YKhomenkov/status/2121676247659126786
 
 <!-- /PROMO_VIDEO_SLOT -->
 

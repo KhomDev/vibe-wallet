@@ -316,6 +316,15 @@ export interface StateStore {
 
 const BLOB_PATH = "vibe-wallet/agent-state.json";
 
+/**
+ * The Blob `get()` response can carry a weak validator (`W/"<hash>"`, e.g. after transfer compression), but
+ * `put({ ifMatch })` compares against the strong ETag (`"<hash>"`), so a weak value never matches and every
+ * write fails as a conflict. Same hash, so dropping the weak prefix keeps the compare-and-swap exact.
+ */
+export function strongEtag(etag: string | undefined): string | undefined {
+  return etag ? etag.replace(/^W\//i, "") : etag;
+}
+
 function isConflict(err: unknown): boolean {
   const name = err && typeof err === "object" && "name" in err ? String((err as { name: unknown }).name) : "";
   const message = err instanceof Error ? err.message : String(err);
@@ -333,7 +342,7 @@ class BlobStore implements StateStore {
     if (!result) return { state: emptyState(), exists: false };
     if (result.statusCode !== 200 || !result.stream) throw new Error(`Unexpected blob response ${result.statusCode}.`);
     const text = await new Response(result.stream).text();
-    return { state: normalize(JSON.parse(text)), etag: result.blob.etag, exists: true };
+    return { state: normalize(JSON.parse(text)), etag: strongEtag(result.blob.etag), exists: true };
   }
 
   async write(next: AgentState, prev: Snapshot): Promise<WriteResult> {

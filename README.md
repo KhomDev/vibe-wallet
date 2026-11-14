@@ -15,6 +15,7 @@ check it, and nothing is signed until you confirm: in your own wallet, or with a
 [![NEAR Intents](https://img.shields.io/badge/NEAR_Intents-executed_swaps-7B61FF?style=flat-square)](#executed-near-intents-swaps-mainnet)
 [![CI](https://img.shields.io/github/actions/workflow/status/KhomDev/vibe-wallet/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/KhomDev/vibe-wallet/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F5A623?style=flat-square)](LICENSE)
+[![Browser extension: coming soon](https://img.shields.io/badge/Browser_extension-coming_soon-FF4FD8?style=flat-square&logo=googlechrome&logoColor=white)](#browser-extension-coming-soon)
 
 Built at **NEAR HACKATHON 2026**
 
@@ -23,6 +24,9 @@ Built at **NEAR HACKATHON 2026**
 </div>
 
 ---
+
+> **🧩 Browser extension: coming soon.** Vibe Wallet in your browser toolbar: a popup or side panel where you type or say a command, and it hands the transaction to the wallet you already use to sign. Like MetaMask, but you talk to it, and it never stores your keys.
+<a id="browser-extension-coming-soon"></a>
 
 ## Try it free (testnet demo for judges)
 
@@ -466,7 +470,7 @@ payments); then partner wallets through the SDK; then cross-chain payouts throug
 | Phase | Scope |
 | --- | --- |
 | **Now (hackathon)** | Live on NEAR mainnet; voice wallet; NEAR AI intents bound to your words; Wallet Selector (no key pasting); guardrails and kill switch; executed NEAR Intents swaps from the confirm card on mainnet; live TriagePay on-chain limits; testnet agent; security review remediated |
-| **Next** | Agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); a browser extension that is a popup or side panel for typed or spoken commands and hands the transaction to your existing wallet to sign (no key storage in the extension); app-fee collection; APK 1.2; a shared rate-limit store |
+| **Next** | Agent payments routed through a TriagePay policy wallet (pay-only agent key, limits on chain); a browser extension (**coming soon**) that is a popup or side panel for typed or spoken commands and hands the transaction to your existing wallet to sign (no key storage in the extension); app-fee collection; APK 1.2; a shared rate-limit store |
 | **Later** | Chain Signatures for multi-chain accounts; passkey-backed browser accounts; store releases; SDK beta |
 
 ## Testing
